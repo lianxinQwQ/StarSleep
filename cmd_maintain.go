@@ -16,6 +16,8 @@ import (
 	"starsleep/internal/util"
 )
 
+const snapshotTimestampLen = 15 // YYYYMMDD-HHMMSS
+
 func cmdMaintain(args []string) {
 	util.CheckRoot()
 
@@ -98,8 +100,65 @@ func cmdMaintain(args []string) {
 		fmt.Println(i18n.T("maintain.step4.skip"))
 	}
 
+	// 5. 创建快照并部署引导
+	fmt.Println(i18n.T("maintain.step5"))
+	currentSnap := detectCurrentSnapshot()
+	origTs := extractOriginalTimestamp(currentSnap)
+	if origTs == "" {
+		util.Fatal(i18n.T("maintain.bad.snapshot", currentSnap))
+	}
+	newTs := util.Timestamp()
+	newSnapName := fmt.Sprintf("snapshot-%s-%s", origTs, newTs)
+	snapshotDir := filepath.Join(defaultWorkDir, "snapshots", newSnapName)
+
+	fmt.Println(i18n.T("maintain.snapshot.name", newSnapName))
+	if err := util.Run("btrfs", "subvolume", "snapshot", "/", snapshotDir); err != nil {
+		util.Fatal(i18n.T("snapshot.failed", err))
+	}
+
+	latestLink := filepath.Join(defaultWorkDir, "snapshots/latest")
+	os.Remove(latestLink)
+	os.Symlink(snapshotDir, latestLink)
+
+	deploySnapshot(snapshotDir, newSnapName)
+
 	fmt.Println(i18n.T("maintain.separator"))
 	fmt.Println(i18n.T("maintain.done"))
+	fmt.Println()
+	fmt.Println(i18n.T("deploy.reboot.hint"))
+	fmt.Println(i18n.T("deploy.reboot.entry", entryTitle, newSnapName))
+}
+
+// detectCurrentSnapshot 从 /proc/cmdline 中解析当前启动的快照名称
+func detectCurrentSnapshot() string {
+	data, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		util.Fatal(i18n.T("maintain.detect.failed", err))
+	}
+	for _, field := range strings.Fields(string(data)) {
+		// rootflags=subvol=/starsleep/snapshots/snapshot-YYYYMMDD-HHMMSS
+		if idx := strings.Index(field, "subvol="); idx >= 0 {
+			subvol := field[idx+len("subvol="):]
+			return filepath.Base(subvol)
+		}
+	}
+	util.Fatal(i18n.T("maintain.detect.failed", "subvol not found in /proc/cmdline"))
+	return ""
+}
+
+// extractOriginalTimestamp 从快照名称中提取原始构建时间戳
+// snapshot-YYYYMMDD-HHMMSS           → YYYYMMDD-HHMMSS
+// snapshot-YYYYMMDD-HHMMSS-YYYYMMDD-HHMMSS → YYYYMMDD-HHMMSS (首个)
+func extractOriginalTimestamp(snapName string) string {
+	prefix := "snapshot-"
+	if !strings.HasPrefix(snapName, prefix) {
+		return ""
+	}
+	rest := snapName[len(prefix):]
+	if len(rest) >= snapshotTimestampLen {
+		return rest[:snapshotTimestampLen]
+	}
+	return ""
 }
 
 func maintainCleanup(root, dbPath string, expectedPkgs []string) {

@@ -66,6 +66,17 @@ func cmdFlatten(args []string) {
 	}
 
 	snapName := filepath.Base(target)
+	deploySnapshot(target, snapName)
+
+	fmt.Println(i18n.T("deploy.separator"))
+	fmt.Println(i18n.T("deploy.done"))
+	fmt.Println()
+	fmt.Println(i18n.T("deploy.reboot.hint"))
+	fmt.Println(i18n.T("deploy.reboot.entry", entryTitle, snapName))
+}
+
+// deploySnapshot 将快照的内核和 initramfs 部署到 boot 分区并生成引导条目
+func deploySnapshot(target, snapName string) {
 	snapBoot := filepath.Join(target, "boot")
 
 	if _, err := os.Stat(snapBoot); err != nil {
@@ -123,11 +134,6 @@ options root="LABEL=%s" rootflags=subvol=/%s/%s %s
 	}
 
 	fmt.Println(i18n.T("deploy.entry.generated", confPath))
-	fmt.Println(i18n.T("deploy.separator"))
-	fmt.Println(i18n.T("deploy.done"))
-	fmt.Println()
-	fmt.Println(i18n.T("deploy.reboot.hint"))
-	fmt.Println(i18n.T("deploy.reboot.entry", entryTitle, snapName))
 }
 
 func listBootEntries() {
