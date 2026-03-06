@@ -50,13 +50,6 @@ func cmdBuild(args []string) {
 		}
 	}()
 
-	verifyTool := filepath.Join(workDir, "starsleep-verify")
-	if verify {
-		if _, err := os.Stat(verifyTool); err != nil {
-			fatal(T("verify.tool.not.found", verifyTool))
-		}
-	}
-
 	os.MkdirAll(logDir, 0o755)
 	os.MkdirAll(filepath.Join(workDir, "work"), 0o755)
 
@@ -196,9 +189,7 @@ func cmdBuild(args []string) {
 	// 一致性校验
 	if verify {
 		logMsg("%s", T("verify.start"))
-		verifyArgs := []string{"--flat", flatDir, "--layers"}
-		verifyArgs = append(verifyArgs, layerDirs...)
-		if err := run(verifyTool, verifyArgs...); err != nil {
+		if !runVerify(flatDir, layerDirs) {
 			fatal(T("verify.failed"))
 		}
 		logMsg("%s", T("verify.passed"))

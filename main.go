@@ -31,6 +31,8 @@ func main() {
 		cmdInit(cmdArgs)
 	case "maintain":
 		cmdMaintain(cmdArgs)
+	case "verify":
+		cmdVerify(cmdArgs)
 	default:
 		fmt.Fprintln(os.Stderr, T("unknown.cmd", cmd))
 		printUsage()

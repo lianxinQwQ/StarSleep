@@ -69,21 +69,6 @@ func cmdInit(args []string) {
 		}
 	}
 
-	// 部署 starsleep-verify（仍为 bash 脚本）
-	selfDir, _ := os.Executable()
-	if selfDir != "" {
-		selfDir = filepath.Dir(selfDir)
-	}
-	verifyScript := filepath.Join(selfDir, "starsleep-verify")
-	if _, err := os.Stat(verifyScript); err == nil {
-		data, err := os.ReadFile(verifyScript)
-		if err == nil {
-			dst := filepath.Join(workDir, "starsleep-verify")
-			os.WriteFile(dst, data, 0o755)
-			fmt.Println(T("init.deployed", dst))
-		}
-	}
-
 	fmt.Println()
 	fmt.Println(T("init.done"))
 	fmt.Println(T("init.tree.header"))

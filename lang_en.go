@@ -13,6 +13,7 @@ Commands:
   flatten   Deploy snapshot to boot
   init      Initialize work environment
   maintain  Dynamic maintenance mode (operate on running system)
+  verify    Verify flatten consistency
 
 General options:
   -c,  --config <path>   Specify config directory
@@ -22,6 +23,10 @@ General options:
 build options:
   --clean [layers...]  Clean layers and rebuild (all if none specified)
   --verify             Verify flatten consistency before snapshot
+
+verify options:
+  --flat <flat-dir>         Flat subvolume path
+  --layers <l1> [l2...]     Layer directory list
 
 flatten options:
   --list              List deployed boot entries
@@ -35,6 +40,21 @@ flatten options:
 	// ── build.go ──
 	"build.unknown.arg":     "build: unknown argument: %s",
 	"verify.tool.not.found": "Verify tool not found: %s",
+	"verify.unknown.arg":    "verify: unknown argument: %s",
+	"verify.usage":          "Usage: starsleep verify --flat <flat-dir> --layers <layer1> [layer2] ...",
+	"verify.separator":      "[Verify] ─────────────────────────────────────────────",
+	"verify.flat.dir":       "[Verify] Flat dir: %s",
+	"verify.layer.count":    "[Verify] Layers: %d",
+	"verify.tmpdir.failed":  "[Verify] Failed to create temp dir: %v",
+	"verify.mount.failed":   "[Verify] Failed to mount OverlayFS: %v",
+	"verify.mounted":        "[Verify] OverlayFS mounted: %s",
+	"verify.lowerdir":       "[Verify] lowerdir order: %s",
+	"verify.comparing":      "[Verify] Comparing: merged view → flat dir...",
+	"verify.rsync.failed":   "[Verify] ✗ rsync check command failed: %v",
+	"verify.diff.count":     "[Verify] ✗ Found %d differences:",
+	"verify.diff.truncated": "[Verify]   ... more diffs truncated (total %d)",
+	"verify.result.ok":      "[Verify] ✓ Consistency check passed",
+	"verify.result.fail":    "[Verify] ✗ Consistency check failed",
 	"clean.workspace":       "--clean: Cleaning workspace, rebuild from scratch",
 	"workspace.cleaned":     "Workspace cleaned",
 	"clean.layer":           "--clean: Cleaning layer %s",

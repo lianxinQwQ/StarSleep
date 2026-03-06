@@ -13,6 +13,7 @@ var zhMessages = map[string]string{
   flatten   部署快照到引导
   init      初始化工作环境
   maintain  动态维护模式（直接操作当前系统）
+  verify    展平一致性校验
 
 通用选项:
   -c,  --config <路径>   指定配置目录
@@ -22,6 +23,10 @@ var zhMessages = map[string]string{
 build 选项:
   --clean [层名...]  清理 layers 后重新构建 (不指定则清理全部)
   --verify          构建后快照前校验展平一致性
+
+verify 选项:
+  --flat <展平目录>     展平子卷路径
+  --layers <层1> [层2...]  层目录列表
 
 flatten 选项:
   --list              列出已部署的引导条目
@@ -35,6 +40,21 @@ flatten 选项:
 	// ── build.go ──
 	"build.unknown.arg":     "build: 未知参数: %s",
 	"verify.tool.not.found": "未找到校验工具: %s",
+	"verify.unknown.arg":    "verify: 未知参数: %s",
+	"verify.usage":          "用法: starsleep verify --flat <展平目录> --layers <层1> [层2] ...",
+	"verify.separator":      "[Verify] ─────────────────────────────────────────────",
+	"verify.flat.dir":       "[Verify] 展平目录: %s",
+	"verify.layer.count":    "[Verify] 层数: %d",
+	"verify.tmpdir.failed":  "[Verify] 创建临时目录失败: %v",
+	"verify.mount.failed":   "[Verify] 挂载 OverlayFS 失败: %v",
+	"verify.mounted":        "[Verify] OverlayFS 已挂载: %s",
+	"verify.lowerdir":       "[Verify] lowerdir 顺序: %s",
+	"verify.comparing":      "[Verify] 正向校验: 合并视图 → 展平目录...",
+	"verify.rsync.failed":   "[Verify] ✗ rsync 校验命令执行失败: %v",
+	"verify.diff.count":     "[Verify] ✗ 发现 %d 处差异:",
+	"verify.diff.truncated": "[Verify]   ... 更多差异被截断 (共 %d 处)",
+	"verify.result.ok":      "[Verify] ✓ 一致性校验全部通过",
+	"verify.result.fail":    "[Verify] ✗ 一致性校验失败",
 	"clean.workspace":       "--clean: 清理工作区，从头构建",
 	"workspace.cleaned":     "工作区已清理",
 	"clean.layer":           "--clean: 清理层 %s",
