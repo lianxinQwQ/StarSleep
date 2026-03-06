@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -19,14 +20,19 @@ func cmdBuild(args []string) {
 
 	clean := false
 	verify := false
-	for _, arg := range remaining {
-		switch arg {
+	var cleanLayers []string
+	for i := 0; i < len(remaining); i++ {
+		switch remaining[i] {
 		case "--clean":
 			clean = true
+			for i+1 < len(remaining) && !strings.HasPrefix(remaining[i+1], "--") {
+				i++
+				cleanLayers = append(cleanLayers, remaining[i])
+			}
 		case "--verify":
 			verify = true
 		default:
-			fatal(T("build.unknown.arg", arg))
+			fatal(T("build.unknown.arg", remaining[i]))
 		}
 	}
 
@@ -56,10 +62,19 @@ func cmdBuild(args []string) {
 
 	// 清理工作区（仅在 --clean 时）
 	if clean {
-		logMsg("%s", T("clean.workspace"))
-		os.RemoveAll(filepath.Join(workDir, "layers"))
-		os.MkdirAll(filepath.Join(workDir, "layers"), 0o755)
-		logMsg("%s", T("workspace.cleaned"))
+		if len(cleanLayers) == 0 {
+			logMsg("%s", T("clean.workspace"))
+			os.RemoveAll(filepath.Join(workDir, "layers"))
+			os.MkdirAll(filepath.Join(workDir, "layers"), 0o755)
+			logMsg("%s", T("workspace.cleaned"))
+		} else {
+			for _, name := range cleanLayers {
+				layerDir := filepath.Join(workDir, "layers", filepath.Base(name))
+				logMsg(T("clean.layer"), name)
+				os.RemoveAll(layerDir)
+			}
+			logMsg(T("clean.layers.done"), len(cleanLayers))
+		}
 	}
 
 	// 清理残留挂载

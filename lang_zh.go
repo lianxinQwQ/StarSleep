@@ -20,8 +20,8 @@ var zhMessages = map[string]string{
   --lang <语言>          界面语言 (zh/en, 默认: 自动检测)
 
 build 选项:
-  --clean    清理 layers 后从头构建
-  --verify   构建后快照前校验展平一致性
+  --clean [层名...]  清理 layers 后重新构建 (不指定则清理全部)
+  --verify          构建后快照前校验展平一致性
 
 flatten 选项:
   --list              列出已部署的引导条目
@@ -37,6 +37,8 @@ flatten 选项:
 	"verify.tool.not.found": "未找到校验工具: %s",
 	"clean.workspace":       "--clean: 清理工作区，从头构建",
 	"workspace.cleaned":     "工作区已清理",
+	"clean.layer":           "--clean: 清理层 %s",
+	"clean.layers.done":     "已清理 %d 个层",
 	"stale.mount":           "检测到 %s 残留挂载，正在清理...",
 	"load.config.failed":    "加载配置失败: %v",
 	"build.start":           "=== StarSleep 分层构建开始 ===",

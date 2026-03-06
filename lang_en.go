@@ -20,8 +20,8 @@ General options:
   --lang <lang>          UI language (zh/en, default: auto-detect)
 
 build options:
-  --clean    Clean layers and rebuild from scratch
-  --verify   Verify flatten consistency before snapshot
+  --clean [layers...]  Clean layers and rebuild (all if none specified)
+  --verify             Verify flatten consistency before snapshot
 
 flatten options:
   --list              List deployed boot entries
@@ -37,6 +37,8 @@ flatten options:
 	"verify.tool.not.found": "Verify tool not found: %s",
 	"clean.workspace":       "--clean: Cleaning workspace, rebuild from scratch",
 	"workspace.cleaned":     "Workspace cleaned",
+	"clean.layer":           "--clean: Cleaning layer %s",
+	"clean.layers.done":     "Cleaned %d layers",
 	"stale.mount":           "Detected stale mount at %s, cleaning up...",
 	"load.config.failed":    "Failed to load config: %v",
 	"build.start":           "=== StarSleep Layered Build Started ===",
