@@ -23,11 +23,11 @@ type LayerConfig struct {
 func loadLayerConfig(path string) (*LayerConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("读取 %s: %w", path, err)
+		return nil, fmt.Errorf(T("cfg.read"), path, err)
 	}
 	var cfg LayerConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("解析 %s: %w", path, err)
+		return nil, fmt.Errorf(T("cfg.parse"), path, err)
 	}
 	return &cfg, nil
 }
@@ -37,10 +37,10 @@ func loadAllLayers(configDir string) ([]*LayerConfig, []string, error) {
 	layersDir := filepath.Join(configDir, "layers")
 	matches, err := filepath.Glob(filepath.Join(layersDir, "*.yaml"))
 	if err != nil {
-		return nil, nil, fmt.Errorf("扫描层配置: %w", err)
+		return nil, nil, fmt.Errorf(T("cfg.scan"), err)
 	}
 	if len(matches) == 0 {
-		return nil, nil, fmt.Errorf("%s 中没有找到配置文件", layersDir)
+		return nil, nil, fmt.Errorf(T("cfg.no.files"), layersDir)
 	}
 	sort.Strings(matches)
 
@@ -132,10 +132,10 @@ func parseConfigFlags(args []string) (configDir string, remaining []string) {
 	if copyFrom != "" {
 		// 将指定配置复制到默认路径
 		if err := copyConfig(copyFrom, defaultConfigDir); err != nil {
-			fatal(fmt.Sprintf("复制配置失败: %v", err))
+			fatal(T("cfg.copy.failed", err))
 		}
 		configDir = defaultConfigDir
-		logMsg("已复制配置: %s → %s", copyFrom, defaultConfigDir)
+		logMsg(T("cfg.copied"), copyFrom, defaultConfigDir)
 	}
 
 	return
@@ -145,10 +145,10 @@ func parseConfigFlags(args []string) (configDir string, remaining []string) {
 func copyConfig(src, dst string) error {
 	fi, err := os.Stat(src)
 	if err != nil {
-		return fmt.Errorf("源配置不存在: %s", src)
+		return fmt.Errorf(T("cfg.src.not.exist"), src)
 	}
 	if !fi.IsDir() {
-		return fmt.Errorf("源配置不是目录: %s", src)
+		return fmt.Errorf(T("cfg.src.not.dir"), src)
 	}
 
 	// 清理目标目录的 layers 子目录
@@ -159,7 +159,7 @@ func copyConfig(src, dst string) error {
 	srcLayers := filepath.Join(src, "layers")
 	entries, err := os.ReadDir(srcLayers)
 	if err != nil {
-		return fmt.Errorf("读取源 layers: %w", err)
+		return fmt.Errorf(T("cfg.read.layers"), err)
 	}
 	for _, entry := range entries {
 		if entry.IsDir() {

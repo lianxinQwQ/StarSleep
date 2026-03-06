@@ -33,7 +33,7 @@ func cmdFlatten(args []string) {
 			return
 		case "--remove":
 			if len(args) < 2 {
-				fatal("用法: starsleep flatten --remove <快照名称>")
+				fatal(T("flatten.remove.usage"))
 			}
 			removeBootEntry(args[1])
 			return
@@ -62,7 +62,7 @@ func cmdFlatten(args []string) {
 		if _, err2 := os.Stat(full); err2 == nil {
 			target = full
 		} else {
-			fatal("快照不存在: " + target)
+			fatal(T("snapshot.not.exist", target))
 		}
 	}
 
@@ -70,7 +70,7 @@ func cmdFlatten(args []string) {
 	snapBoot := filepath.Join(target, "boot")
 
 	if _, err := os.Stat(snapBoot); err != nil {
-		fatal("快照中未找到 boot 目录: " + snapBoot)
+		fatal(T("boot.not.found", snapBoot))
 	}
 
 	// 查找内核和 initramfs
@@ -78,17 +78,17 @@ func cmdFlatten(args []string) {
 	initramfs := findFile(snapBoot, "initramfs-*.img")
 
 	if vmlinuz == "" {
-		fatal("未找到内核文件 (vmlinuz-*): " + snapBoot)
+		fatal(T("kernel.not.found", snapBoot))
 	}
 	if initramfs == "" {
-		fatal("未找到 initramfs (initramfs-*.img): " + snapBoot)
+		fatal(T("initramfs.not.found", snapBoot))
 	}
 
-	fmt.Println("[Deploy] ─────────────────────────────────────────────")
-	fmt.Printf("[Deploy] 快照: %s\n", snapName)
-	fmt.Printf("[Deploy] 内核: %s\n", filepath.Base(vmlinuz))
-	fmt.Printf("[Deploy] Initramfs: %s\n", filepath.Base(initramfs))
-	fmt.Println("[Deploy] ─────────────────────────────────────────────")
+	fmt.Println(T("deploy.separator"))
+	fmt.Println(T("deploy.snapshot", snapName))
+	fmt.Println(T("deploy.kernel", filepath.Base(vmlinuz)))
+	fmt.Println(T("deploy.initramfs", filepath.Base(initramfs)))
+	fmt.Println(T("deploy.separator"))
 
 	// 复制 boot 文件到 ESP
 	bootDest := filepath.Join(bootDir, snapName)
@@ -96,7 +96,7 @@ func cmdFlatten(args []string) {
 
 	copyFile(vmlinuz, filepath.Join(bootDest, "vmlinuz"))
 	copyFile(initramfs, filepath.Join(bootDest, "initramfs-linux.img"))
-	fmt.Printf("[Deploy] 已复制启动文件到: %s/\n", bootDest)
+	fmt.Println(T("deploy.boot.copied", bootDest))
 
 	// 构建 initrd 列表
 	var initrdLines []string
@@ -124,20 +124,20 @@ options root="LABEL=%s" rootflags=subvol=/%s/%s %s
 		rootLabel, subvolPrefix, snapName, kernelOpts)
 
 	if err := os.WriteFile(confPath, []byte(entry), 0o644); err != nil {
-		fatal(fmt.Sprintf("写入引导条目失败: %v", err))
+		fatal(T("write.entry.failed", err))
 	}
 
-	fmt.Printf("[Deploy] 已生成引导条目: %s\n", confPath)
-	fmt.Println("[Deploy] ─────────────────────────────────────────────")
-	fmt.Println("[Deploy] ✓ 部署完成")
+	fmt.Println(T("deploy.entry.generated", confPath))
+	fmt.Println(T("deploy.separator"))
+	fmt.Println(T("deploy.done"))
 	fmt.Println()
-	fmt.Println("[Deploy] 重启后在 systemd-boot 菜单中选择:")
-	fmt.Printf("[Deploy]   %s - %s\n", entryTitle, snapName)
+	fmt.Println(T("deploy.reboot.hint"))
+	fmt.Println(T("deploy.reboot.entry", entryTitle, snapName))
 }
 
 // listBootEntries 列出已部署的引导条目
 func listBootEntries() {
-	fmt.Println("[Deploy] 已部署的 StarSleep 引导条目:")
+	fmt.Println(T("deploy.list.header"))
 	found := false
 	entries, _ := filepath.Glob(filepath.Join(entryDir, "starsleep-*.conf"))
 	for _, conf := range entries {
@@ -159,7 +159,7 @@ func listBootEntries() {
 		fmt.Printf("  %s  (%s)\n", name, title)
 	}
 	if !found {
-		fmt.Println("  (无)")
+		fmt.Println(T("deploy.list.empty"))
 	}
 }
 
@@ -170,14 +170,14 @@ func removeBootEntry(snapName string) {
 
 	if _, err := os.Stat(conf); err == nil {
 		os.Remove(conf)
-		fmt.Printf("[Deploy] 已移除引导条目: %s\n", conf)
+		fmt.Println(T("deploy.removed.entry", conf))
 	} else {
-		fmt.Printf("[Deploy] 引导条目不存在: %s\n", conf)
+		fmt.Println(T("deploy.entry.not.exist", conf))
 	}
 
 	if _, err := os.Stat(bootSnap); err == nil {
 		os.RemoveAll(bootSnap)
-		fmt.Printf("[Deploy] 已移除启动文件: %s\n", bootSnap)
+		fmt.Println(T("deploy.removed.boot", bootSnap))
 	}
 }
 
@@ -194,9 +194,9 @@ func findFile(dir, pattern string) string {
 func copyFile(src, dst string) {
 	data, err := os.ReadFile(src)
 	if err != nil {
-		fatal(fmt.Sprintf("读取 %s 失败: %v", src, err))
+		fatal(T("read.file.failed", src, err))
 	}
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		fatal(fmt.Sprintf("写入 %s 失败: %v", dst, err))
+		fatal(T("write.file.failed", dst, err))
 	}
 }

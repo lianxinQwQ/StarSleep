@@ -46,7 +46,7 @@ func walkUpper(upperBase, flatBase, rel string, st *flattenStats) error {
 
 	entries, err := os.ReadDir(upperDir)
 	if err != nil {
-		return fmt.Errorf("读取目录 %s: %w", upperDir, err)
+		return fmt.Errorf(T("ovl.readdir"), upperDir, err)
 	}
 
 	for _, entry := range entries {
@@ -57,12 +57,12 @@ func walkUpper(upperBase, flatBase, rel string, st *flattenStats) error {
 
 		fi, err := entry.Info()
 		if err != nil {
-			return fmt.Errorf("stat %s: %w", upperPath, err)
+			return fmt.Errorf(T("ovl.stat"), upperPath, err)
 		}
 
 		sysstat, ok := fi.Sys().(*syscall.Stat_t)
 		if !ok {
-			return fmt.Errorf("无法获取 syscall.Stat_t: %s", upperPath)
+			return fmt.Errorf(T("ovl.no.stat"), upperPath)
 		}
 
 		// Whiteout: 主次设备号均为 0 的字符设备
@@ -97,7 +97,7 @@ func walkUpper(upperBase, flatBase, rel string, st *flattenStats) error {
 
 			dirPerm := fs.FileMode(sysstat.Mode & 0o7777)
 			if err := os.MkdirAll(flatPath, dirPerm); err != nil {
-				return fmt.Errorf("创建目录 %s: %w", flatPath, err)
+				return fmt.Errorf(T("ovl.mkdir"), flatPath, err)
 			}
 			os.Chmod(flatPath, dirPerm)
 			os.Lchown(flatPath, int(sysstat.Uid), int(sysstat.Gid))
@@ -140,20 +140,20 @@ func ovlReflinkCopy(src, dst string, perm uint32, srcStat *syscall.Stat_t) error
 
 	srcFd, err := syscall.Open(src, syscall.O_RDONLY, 0)
 	if err != nil {
-		return fmt.Errorf("打开源文件 %s: %w", src, err)
+		return fmt.Errorf(T("ovl.open.src"), src, err)
 	}
 	defer syscall.Close(srcFd)
 
 	dstFd, err := syscall.Open(dst,
 		syscall.O_WRONLY|syscall.O_CREAT|syscall.O_TRUNC, perm)
 	if err != nil {
-		return fmt.Errorf("创建目标文件 %s: %w", dst, err)
+		return fmt.Errorf(T("ovl.create.dst"), dst, err)
 	}
 	defer syscall.Close(dstFd)
 
 	if err := ovlIoctl(dstFd, FICLONE, srcFd); err != nil {
 		if err2 := ovlCopyFallback(srcFd, dstFd); err2 != nil {
-			return fmt.Errorf("复制 %s -> %s: %w", src, dst, err2)
+			return fmt.Errorf(T("ovl.copy"), src, dst, err2)
 		}
 	}
 
@@ -202,7 +202,7 @@ func ovlCopySymlink(src, dst string) error {
 	os.RemoveAll(dst)
 	target, err := os.Readlink(src)
 	if err != nil {
-		return fmt.Errorf("readlink %s: %w", src, err)
+		return fmt.Errorf(T("ovl.readlink"), src, err)
 	}
 	return os.Symlink(target, dst)
 }
@@ -210,7 +210,7 @@ func ovlCopySymlink(src, dst string) error {
 func ovlCopySpecial(src, dst string, srcStat *syscall.Stat_t) error {
 	os.RemoveAll(dst)
 	if err := syscall.Mknod(dst, srcStat.Mode, int(srcStat.Rdev)); err != nil {
-		return fmt.Errorf("mknod %s: %w", dst, err)
+		return fmt.Errorf(T("ovl.mknod"), dst, err)
 	}
 	os.Lchown(dst, int(srcStat.Uid), int(srcStat.Gid))
 	ovlCopyXattrsClean(src, dst)

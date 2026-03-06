@@ -26,7 +26,7 @@ func cmdBuild(args []string) {
 		case "--verify":
 			verify = true
 		default:
-			fatal("build: 未知参数: " + arg)
+			fatal(T("build.unknown.arg", arg))
 		}
 	}
 
@@ -47,7 +47,7 @@ func cmdBuild(args []string) {
 	verifyTool := filepath.Join(workDir, "starsleep-verify")
 	if verify {
 		if _, err := os.Stat(verifyTool); err != nil {
-			fatal("未找到校验工具: " + verifyTool)
+			fatal(T("verify.tool.not.found", verifyTool))
 		}
 	}
 
@@ -56,15 +56,15 @@ func cmdBuild(args []string) {
 
 	// 清理工作区（仅在 --clean 时）
 	if clean {
-		logMsg("--clean: 清理工作区，从头构建")
+		logMsg("%s", T("clean.workspace"))
 		os.RemoveAll(filepath.Join(workDir, "layers"))
 		os.MkdirAll(filepath.Join(workDir, "layers"), 0o755)
-		logMsg("工作区已清理")
+		logMsg("%s", T("workspace.cleaned"))
 	}
 
 	// 清理残留挂载
 	if isMountpoint(merged) {
-		logMsg("检测到 %s 残留挂载，正在清理...", merged)
+		logMsg(T("stale.mount"), merged)
 		syscall.Sync()
 		unmountRecursive(merged)
 		time.Sleep(500 * time.Millisecond)
@@ -73,21 +73,21 @@ func cmdBuild(args []string) {
 	// 加载配置
 	layers, _, err := loadAllLayers(configDir)
 	if err != nil {
-		fatal(fmt.Sprintf("加载配置失败: %v", err))
+		fatal(T("load.config.failed", err))
 	}
 
-	logMsg("=== StarSleep 分层构建开始 ===")
-	logMsg("构建时间: %s", ts)
-	logMsg("阶段数量: %d", len(layers))
+	logMsg("%s", T("build.start"))
+	logMsg(T("build.time"), ts)
+	logMsg(T("stage.count"), len(layers))
 
 	// 初始化展平子卷
 	if isBtrfsSubvolume(flatDir) {
 		run("btrfs", "subvolume", "delete", flatDir)
 	}
 	if err := run("btrfs", "subvolume", "create", flatDir); err != nil {
-		fatal(fmt.Sprintf("创建展平子卷失败: %v", err))
+		fatal(T("create.flat.failed", err))
 	}
-	logMsg("展平子卷已就绪: %s", flatDir)
+	logMsg(T("flat.ready"), flatDir)
 
 	// 逐层构建与展平
 	// 每层使用 reflink 备份保护：构建前 cp --reflink=always 备份 upper，
@@ -106,23 +106,23 @@ func cmdBuild(args []string) {
 
 		// 清理可能残留的上次失败的备份（说明上次此层失败，恢复）
 		if _, err := os.Stat(upperBak); err == nil {
-			logMsg("检测到层 %s 的备份（上次构建可能中断），正在恢复...", cfg.Name)
+			logMsg(T("layer.backup.detected"), cfg.Name)
 			os.RemoveAll(upper)
 			os.Rename(upperBak, upper)
 		}
 
 		// 创建 reflink 备份（btrfs 上 --reflink=always 零拷贝 CoW）
 		if err := run("cp", "-a", "--reflink=always", upper, upperBak); err != nil {
-			fatal(fmt.Sprintf("创建层备份失败: %v", err))
+			fatal(T("layer.backup.failed", err))
 		}
 
-		logMsg(">>> 构建层: %s (%s)", cfg.Name, cfg.Helper)
+		logMsg(T("build.layer"), cfg.Name, cfg.Helper)
 
 		// 挂载 OverlayFS（upper 为普通目录，与 flat 子卷共享 st_dev）
 		ovlOpts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s,index=off,metacopy=off",
 			flatDir, upper, ovlWorkDir)
 		if err := syscall.Mount("overlay", merged, "overlay", 0, ovlOpts); err != nil {
-			fatal(fmt.Sprintf("挂载 OverlayFS 失败: %v", err))
+			fatal(T("mount.overlay.failed", err))
 		}
 
 		// 绑定挂载包缓存
@@ -144,7 +144,7 @@ func cmdBuild(args []string) {
 		// 卸载
 		syscall.Sync()
 		if err := unmountRecursive(merged); err != nil {
-			logMsg("警告: 常规卸载失败，使用延迟卸载...")
+			logMsg("%s", T("unmount.fallback"))
 			syscall.Unmount(merged, syscall.MNT_DETACH)
 			for retry := 0; isMountpoint(merged) && retry < 10; retry++ {
 				time.Sleep(500 * time.Millisecond)
@@ -156,46 +156,46 @@ func cmdBuild(args []string) {
 
 		if !layerOk {
 			// 同步失败：丢弃修改后的 upper，从备份恢复
-			logMsg("层 %s 同步失败，从备份恢复上次成功状态", cfg.Name)
+			logMsg(T("layer.sync.restore"), cfg.Name)
 			os.RemoveAll(upper)
 			os.Rename(upperBak, upper)
-			fatal(fmt.Sprintf("层 %s 构建失败", cfg.Name))
+			fatal(T("layer.build.failed", cfg.Name))
 		}
 
 		// 同步成功：删除备份
 		os.RemoveAll(upperBak)
 
 		// 展平
-		logMsg("[Flatten] 展平层 %s ...", cfg.Name)
+		logMsg(T("flatten.layer"), cfg.Name)
 		st, err := flattenOverlay(flatDir, upper)
 		if err != nil {
-			fatal(fmt.Sprintf("展平层 %s 失败: %v", cfg.Name, err))
+			fatal(T("flatten.failed", cfg.Name, err))
 		}
-		logMsg("[Flatten] 统计: %d 文件, %d 目录, %d 符号链接, %d 硬链接, %d whiteout, %d 不透明目录",
+		logMsg(T("flatten.stats"),
 			st.files, st.dirs, st.symlinks, st.hardlinks, st.whiteouts, st.opaques)
 
-		logMsg("<<< 层 %s 完成", cfg.Name)
+		logMsg(T("layer.done"), cfg.Name)
 		layerDirs = append(layerDirs, upper)
 	}
 
 	// 一致性校验
 	if verify {
-		logMsg(">>> 一致性校验: 展平子卷 vs OverlayFS 合并视图")
+		logMsg("%s", T("verify.start"))
 		verifyArgs := []string{"--flat", flatDir, "--layers"}
 		verifyArgs = append(verifyArgs, layerDirs...)
 		if err := run(verifyTool, verifyArgs...); err != nil {
-			fatal("一致性校验失败")
+			fatal(T("verify.failed"))
 		}
-		logMsg("<<< 一致性校验通过")
+		logMsg("%s", T("verify.passed"))
 	}
 
 	// 生成快照
 	snapshotName := "snapshot-" + ts
 	snapshotDir := filepath.Join(workDir, "snapshots", snapshotName)
-	logMsg(">>> 生成快照: %s", snapshotName)
+	logMsg(T("create.snapshot"), snapshotName)
 
 	if err := run("btrfs", "subvolume", "snapshot", flatDir, snapshotDir); err != nil {
-		fatal(fmt.Sprintf("创建快照失败: %v", err))
+		fatal(T("snapshot.failed", err))
 	}
 
 	// 应用继承列表
@@ -206,9 +206,9 @@ func cmdBuild(args []string) {
 	os.Remove(latestLink)
 	os.Symlink(snapshotDir, latestLink)
 
-	logMsg("=== 构建完成 ===")
-	logMsg("快照: %s", snapshotDir)
-	logMsg("链接: %s/snapshots/latest -> %s", workDir, snapshotName)
+	logMsg("%s", T("build.done"))
+	logMsg(T("snapshot.path"), snapshotDir)
+	logMsg(T("snapshot.link"), workDir, snapshotName)
 }
 
 // bindVFS 绑定挂载虚拟文件系统到目标根
@@ -317,9 +317,9 @@ func runSyncSafe(root string, cfg *LayerConfig, expectedPkgs, expectedSvcs []str
 		fatalPanicMode = oldMode
 		if r := recover(); r != nil {
 			if fe, isFatal := r.(fatalError); isFatal {
-				logMsg("层 %s 同步失败: %s", cfg.Name, fe.msg)
+				logMsg(T("layer.sync.error"), cfg.Name, fe.msg)
 			} else {
-				logMsg("层 %s 同步异常: %v", cfg.Name, r)
+				logMsg(T("layer.sync.panic"), cfg.Name, r)
 			}
 			ok = false
 		}
@@ -334,16 +334,16 @@ func applyInheritList(configDir, snapshotDir string) {
 	paths, err := loadInheritList(configDir)
 	if err != nil || len(paths) == 0 {
 		if err != nil {
-			logMsg("提示: 未找到继承列表，跳过")
+			logMsg("%s", T("inherit.not.found"))
 		}
 		return
 	}
 
-	logMsg("应用继承列表: %d 条路径", len(paths))
+	logMsg(T("apply.inherit"), len(paths))
 	for _, entry := range paths {
 		fi, err := os.Stat(entry)
 		if err != nil {
-			logMsg("警告: 继承路径不存在，跳过: %s", entry)
+			logMsg(T("inherit.path.missing"), entry)
 			continue
 		}
 
@@ -352,15 +352,15 @@ func applyInheritList(configDir, snapshotDir string) {
 
 		if fi.IsDir() {
 			if err := run("cp", "-ax", "--reflink=auto", entry, filepath.Dir(dst)+"/"); err != nil {
-				logMsg("警告: 复制目录失败: %s: %v", entry, err)
+				logMsg(T("copy.dir.failed"), entry, err)
 			} else {
-				logMsg("继承目录: %s", entry)
+				logMsg(T("inherit.dir"), entry)
 			}
 		} else {
 			if err := run("cp", "-a", "--reflink=auto", entry, dst); err != nil {
-				logMsg("警告: 复制文件失败: %s: %v", entry, err)
+				logMsg(T("copy.file.failed"), entry, err)
 			} else {
-				logMsg("继承文件: %s", entry)
+				logMsg(T("inherit.file"), entry)
 			}
 		}
 	}

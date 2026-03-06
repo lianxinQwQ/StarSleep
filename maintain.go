@@ -17,12 +17,12 @@ func cmdMaintain(args []string) {
 
 	configDir, remaining := parseConfigFlags(args)
 	if len(remaining) > 0 {
-		fatal("maintain: 未知参数: " + remaining[0])
+		fatal(T("maintain.unknown.arg", remaining[0]))
 	}
 
 	layers, _, err := loadAllLayers(configDir)
 	if err != nil {
-		fatal(fmt.Sprintf("加载配置失败: %v", err))
+		fatal(T("load.config.failed", err))
 	}
 
 	// 按 helper 类型汇总
@@ -46,58 +46,58 @@ func cmdMaintain(args []string) {
 	allPkgs = append(allPkgs, officialPkgs...)
 	allPkgs = append(allPkgs, aurPkgs...)
 
-	fmt.Println("[Maintain] ═══════════════════════════════════════════════")
-	fmt.Println("[Maintain] StarSleep 动态维护模式")
-	fmt.Printf("[Maintain] 配置目录: %s\n", configDir)
-	fmt.Printf("[Maintain] 层数: %d\n", len(layers))
-	fmt.Printf("[Maintain] 官方仓库包: %d 个\n", len(officialPkgs))
-	fmt.Printf("[Maintain] AUR 包: %d 个\n", len(aurPkgs))
-	fmt.Printf("[Maintain] 服务: %d 个\n", len(services))
-	fmt.Println("[Maintain] ═══════════════════════════════════════════════")
+	fmt.Println(T("maintain.separator"))
+	fmt.Println(T("maintain.title"))
+	fmt.Println(T("maintain.config.dir", configDir))
+	fmt.Println(T("maintain.layer.count", len(layers)))
+	fmt.Println(T("maintain.official.pkgs", len(officialPkgs)))
+	fmt.Println(T("maintain.aur.pkgs", len(aurPkgs)))
+	fmt.Println(T("maintain.services.count", len(services)))
+	fmt.Println(T("maintain.separator"))
 
 	root := "/"
 	dbPath := filepath.Join(root, "var/lib/pacman")
 
 	// 1. 清理：降级不在配置中的显式包，移除孤儿
-	fmt.Println("[Maintain] 步骤 1/4: 清理多余软件包...")
+	fmt.Println(T("maintain.step1"))
 	maintainCleanup(root, dbPath, allPkgs)
 
 	// 2. 安装官方仓库包
 	if len(officialPkgs) > 0 {
-		fmt.Println("[Maintain] 步骤 2/4: 同步官方仓库软件包...")
+		fmt.Println(T("maintain.step2"))
 		args := append([]string{
 			"-S", "--needed", "--noconfirm",
 		}, officialPkgs...)
 		if err := run("pacman", args...); err != nil {
-			fatal(fmt.Sprintf("pacman 安装失败: %v", err))
+			fatal(T("pacman.failed", err))
 		}
 	} else {
-		fmt.Println("[Maintain] 步骤 2/4: 无官方仓库包需要安装")
+		fmt.Println(T("maintain.step2.skip"))
 	}
 
 	// 3. 安装 AUR 包
 	if len(aurPkgs) > 0 {
-		fmt.Println("[Maintain] 步骤 3/4: 同步 AUR 软件包...")
+		fmt.Println(T("maintain.step3"))
 		paruArgs := append([]string{
 			"-S", "--needed", "--noconfirm",
 		}, aurPkgs...)
 		if err := run("paru", paruArgs...); err != nil {
-			fmt.Fprintf(os.Stderr, "[Maintain] 警告: paru 安装失败: %v\n", err)
+			fmt.Fprintln(os.Stderr, T("maintain.paru.warn", err))
 		}
 	} else {
-		fmt.Println("[Maintain] 步骤 3/4: 无 AUR 包需要安装")
+		fmt.Println(T("maintain.step3.skip"))
 	}
 
 	// 4. 启用服务
 	if len(services) > 0 {
-		fmt.Println("[Maintain] 步骤 4/4: 启用 systemd 服务...")
+		fmt.Println(T("maintain.step4"))
 		enableServiceLive(services)
 	} else {
-		fmt.Println("[Maintain] 步骤 4/4: 无服务需要启用")
+		fmt.Println(T("maintain.step4.skip"))
 	}
 
-	fmt.Println("[Maintain] ═══════════════════════════════════════════════")
-	fmt.Println("[Maintain] ✓ 动态维护完成")
+	fmt.Println(T("maintain.separator"))
+	fmt.Println(T("maintain.done"))
 }
 
 // maintainCleanup 在当前系统上执行声明式清理
@@ -110,7 +110,7 @@ func maintainCleanup(root, dbPath string, expectedPkgs []string) {
 	// 降级多余的显式安装包为依赖
 	explicitPkgs, err := listExplicitPkgs(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[Maintain] 警告: 查询显式包列表失败: %v\n", err)
+		fmt.Fprintln(os.Stderr, T("maintain.query.failed", err))
 	} else {
 		var demote []string
 		for _, pkg := range explicitPkgs {
@@ -119,8 +119,7 @@ func maintainCleanup(root, dbPath string, expectedPkgs []string) {
 			}
 		}
 		if len(demote) > 0 {
-			fmt.Printf("[Maintain] 降级 %d 个包为依赖: %s\n",
-				len(demote), strings.Join(demote, " "))
+			fmt.Println(T("maintain.demote", len(demote), strings.Join(demote, " ")))
 			for _, pkg := range demote {
 				runSilent("pacman", "--dbpath", dbPath, "-D", "--asdeps", pkg, "--noconfirm")
 			}
@@ -133,10 +132,10 @@ func maintainCleanup(root, dbPath string, expectedPkgs []string) {
 		if err != nil || len(orphans) == 0 {
 			break
 		}
-		fmt.Printf("[Maintain] 清理孤立依赖: %s\n", strings.Join(orphans, " "))
+		fmt.Println(T("maintain.orphans", strings.Join(orphans, " ")))
 		args := append([]string{"-Rs", "--noconfirm"}, orphans...)
 		if err := run("pacman", args...); err != nil {
-			fmt.Fprintf(os.Stderr, "[Maintain] 警告: 清理孤立依赖失败: %v\n", err)
+			fmt.Fprintln(os.Stderr, T("maintain.orphans.failed", err))
 			break
 		}
 	}

@@ -20,25 +20,25 @@ func syncEnableService(root string, services, expectedSvcs []string) {
 	enabled := listEnabledServices("--root", root)
 	for _, svc := range enabled {
 		if !expectedSet[svc] {
-			fmt.Printf("[Sync] 禁用多余服务: %s\n", svc)
+			fmt.Println(T("sync.disable.extra", svc))
 			runSilent("systemctl", "--root", root, "disable", svc)
 		}
 	}
 
 	// 启用当前层的服务
 	if len(services) == 0 {
-		fmt.Println("[Sync] 没有需要启用的服务")
+		fmt.Println(T("sync.no.services"))
 		return
 	}
 
-	fmt.Println("[Sync] 使用 systemctl 启用 systemd 服务...")
+	fmt.Println(T("sync.enable.start"))
 	for _, svc := range services {
-		fmt.Printf("[Sync] 启用服务: %s\n", svc)
+		fmt.Println(T("sync.enable.service", svc))
 		if err := run("systemctl", "--root", root, "enable", svc); err != nil {
-			fatal(fmt.Sprintf("启用服务 %s 失败: %v", svc, err))
+			fatal(T("sync.enable.failed", svc, err))
 		}
 	}
-	fmt.Printf("[Sync] 已启用 %d 个服务\n", len(services))
+	fmt.Println(T("sync.enabled.count", len(services)))
 }
 
 // enableServiceLive 在当前运行系统上同步服务（动态维护模式）
@@ -53,16 +53,16 @@ func enableServiceLive(services []string) {
 	enabled := listEnabledServices()
 	for _, svc := range enabled {
 		if !expectedSet[svc] {
-			fmt.Printf("[Maintain] 禁用多余服务: %s\n", svc)
+			fmt.Println(T("maintain.disable.extra", svc))
 			runSilent("systemctl", "disable", "--now", svc)
 		}
 	}
 
 	// 启用期望服务
 	for _, svc := range services {
-		fmt.Printf("[Maintain] 启用服务: %s\n", svc)
+		fmt.Println(T("maintain.enable.service", svc))
 		if err := run("systemctl", "enable", "--now", svc); err != nil {
-			fmt.Fprintf(os.Stderr, "[Maintain] 警告: 启用服务 %s 失败: %v\n", svc, err)
+			fmt.Fprintln(os.Stderr, T("maintain.enable.failed", svc, err))
 		}
 	}
 }

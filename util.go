@@ -45,7 +45,7 @@ func fatal(msg string) {
 	if fatalPanicMode {
 		panic(fatalError{msg: msg})
 	}
-	fmt.Fprintf(os.Stderr, "[StarSleep] 错误: %s\n", msg)
+	fmt.Fprintf(os.Stderr, T("fatal.prefix"), msg)
 	os.Exit(1)
 }
 
@@ -68,7 +68,7 @@ func runSilent(name string, args ...string) (string, error) {
 // checkRoot 确认以 root 权限运行
 func checkRoot() {
 	if os.Getuid() != 0 {
-		fatal("需要 root 权限，请使用 sudo 运行")
+		fatal(T("need.root"))
 	}
 }
 

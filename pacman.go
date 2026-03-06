@@ -18,11 +18,11 @@ func cleanupPacman(root string, expectedPkgs []string) {
 
 	explicitPkgs, err := listExplicitPkgs(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[Sync] 警告: 查询显式包列表失败: %v，跳过降级步骤\n", err)
+		fmt.Fprintln(os.Stderr, T("sync.query.failed", err))
 	} else {
 		for _, pkg := range explicitPkgs {
 			if !expectedSet[pkg] {
-				fmt.Printf("[Sync] 降级为依赖: %s\n", pkg)
+				fmt.Println(T("sync.demote", pkg))
 				runSilent("pacman", "--root", root, "--dbpath", dbPath,
 					"-D", "--asdeps", pkg, "--noconfirm")
 			}
@@ -34,14 +34,14 @@ func cleanupPacman(root string, expectedPkgs []string) {
 		if err != nil || len(orphans) == 0 {
 			break
 		}
-		fmt.Printf("[Sync] 清理孤立依赖: %s\n", strings.Join(orphans, " "))
+		fmt.Println(T("sync.orphans", strings.Join(orphans, " ")))
 
 		args := append([]string{
 			"--root", root, "--dbpath", dbPath,
 			"-Rs", "--noconfirm",
 		}, orphans...)
 		if err := run("pacman", args...); err != nil {
-			fmt.Fprintf(os.Stderr, "[Sync] 警告: 清理孤立依赖失败: %v\n", err)
+			fmt.Fprintln(os.Stderr, T("sync.orphans.failed", err))
 			break
 		}
 	}
@@ -53,19 +53,19 @@ func syncWithPacman(root string, installPkgs, expectedPkgs []string) {
 
 	cleanupPacman(root, expectedPkgs)
 
-	fmt.Println("[Sync] 安装/更新软件包...")
+	fmt.Println(T("sync.install.pkgs"))
 	args := append([]string{
 		"--root", root, "--dbpath", dbPath,
 		"--config", "/etc/pacman.conf",
 		"-S", "--needed", "--noconfirm",
 	}, installPkgs...)
 	if err := run("pacman", args...); err != nil {
-		fatal(fmt.Sprintf("pacman 安装失败: %v", err))
+		fatal(T("pacman.failed", err))
 	}
 }
 
 // syncPacman 使用 pacman 同步官方仓库软件包
 func syncPacman(root string, pkgs, expectedPkgs []string) {
-	fmt.Println("[Sync] 使用 pacman 同步官方仓库软件包...")
+	fmt.Println(T("sync.pacman"))
 	syncWithPacman(root, pkgs, expectedPkgs)
 }

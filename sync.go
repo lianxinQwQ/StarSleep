@@ -16,22 +16,22 @@ func syncLayer(root string, cfg *LayerConfig, expectedPkgs, expectedSvcs []strin
 	case "enable_service":
 		syncEnableService(root, cfg.Services, expectedSvcs)
 	default:
-		fatal(fmt.Sprintf("未知的工具: %s\n支持的工具: pacstrap, pacman, paru, enable_service", cfg.Helper))
+		fatal(T("sync.unknown.tool", cfg.Helper))
 	}
 
-	fmt.Printf("[Sync] ✓ 阶段 %s 同步完成\n", cfg.Name)
+	fmt.Println(T("sync.stage.done", cfg.Name))
 }
 
 func printSyncHeader(cfg *LayerConfig, root string) {
-	fmt.Println("[Sync] ─────────────────────────────────────────────")
-	fmt.Printf("[Sync] 阶段: %s\n", cfg.Name)
-	fmt.Printf("[Sync] 工具: %s\n", cfg.Helper)
-	fmt.Printf("[Sync] 目标: %s\n", root)
+	fmt.Println(T("sync.separator"))
+	fmt.Println(T("sync.stage", cfg.Name))
+	fmt.Println(T("sync.tool", cfg.Helper))
+	fmt.Println(T("sync.target", root))
 	switch cfg.Helper {
 	case "pacstrap", "pacman", "paru":
-		fmt.Printf("[Sync] 软件包: %d 个\n", len(cfg.Packages))
+		fmt.Println(T("sync.packages", len(cfg.Packages)))
 	case "enable_service":
-		fmt.Printf("[Sync] 服务: %d 个\n", len(cfg.Services))
+		fmt.Println(T("sync.services", len(cfg.Services)))
 	}
-	fmt.Println("[Sync] ─────────────────────────────────────────────")
+	fmt.Println(T("sync.separator"))
 }

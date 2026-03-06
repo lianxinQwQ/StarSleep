@@ -4,7 +4,7 @@ import "fmt"
 
 // syncParu 使用 paru 安装 AUR 软件包
 func syncParu(root string, pkgs, expectedPkgs []string) {
-	fmt.Println("[Sync] 使用 paru 安装 AUR 软件包...")
+	fmt.Println(T("sync.paru"))
 
 	paruArgs := append([]string{
 		"-u", "builder", "--",
@@ -12,7 +12,7 @@ func syncParu(root string, pkgs, expectedPkgs []string) {
 		"--root", root,
 	}, pkgs...)
 	if err := run("runuser", paruArgs...); err != nil {
-		fatal(fmt.Sprintf("paru 安装失败: %v", err))
+		fatal(T("paru.failed", err))
 	}
 
 	cleanupPacman(root, expectedPkgs)

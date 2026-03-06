@@ -12,7 +12,7 @@ func openHandle(root string) (*alpm.Handle, error) {
 	dbPath := filepath.Join(root, "var/lib/pacman")
 	h, err := alpm.Initialize(root, dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("初始化 alpm: %w", err)
+		return nil, fmt.Errorf(T("alpm.init"), err)
 	}
 	return h, nil
 }
@@ -27,7 +27,7 @@ func listExplicitPkgs(root string) ([]string, error) {
 
 	localDB, err := h.LocalDB()
 	if err != nil {
-		return nil, fmt.Errorf("获取本地数据库: %w", err)
+		return nil, fmt.Errorf(T("alpm.localdb"), err)
 	}
 
 	var pkgs []string
