@@ -1,4 +1,4 @@
-package main
+package i18n
 
 var zhMessages = map[string]string{
 	// ── main.go ──

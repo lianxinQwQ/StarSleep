@@ -1,4 +1,4 @@
-package main
+package i18n
 
 import (
 	"fmt"
@@ -8,8 +8,8 @@ import (
 
 var currentLang = "zh"
 
-// initI18n detects the system locale and sets the language
-func initI18n() {
+// Init detects the system locale and sets the language
+func Init() {
 	lang := os.Getenv("LANG")
 	if l := os.Getenv("LC_ALL"); l != "" {
 		lang = l
@@ -17,10 +17,11 @@ func initI18n() {
 	if l := os.Getenv("LANGUAGE"); l != "" {
 		lang = l
 	}
-	setLang(lang)
+	SetLang(lang)
 }
 
-func setLang(lang string) {
+// SetLang sets the current language
+func SetLang(lang string) {
 	lang = strings.ToLower(lang)
 	switch {
 	case strings.HasPrefix(lang, "en"):
@@ -51,12 +52,12 @@ func T(key string, args ...any) string {
 	return msg
 }
 
-// extractGlobalFlags extracts --lang from args and returns the remaining args
-func extractGlobalFlags(args []string) []string {
+// ExtractGlobalFlags extracts --lang from args and returns the remaining args
+func ExtractGlobalFlags(args []string) []string {
 	var remaining []string
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--lang" && i+1 < len(args) {
-			setLang(args[i+1])
+			SetLang(args[i+1])
 			i++
 			continue
 		}

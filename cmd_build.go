@@ -1,4 +1,4 @@
-// build.go — starsleep build 命令
+// cmd_build.go — starsleep build 命令
 //
 // 按照配置文件定义的阶段顺序，使用 OverlayFS 逐层构建环境，
 // 通过 reflink 展平合并，最终生成 Btrfs 快照。
@@ -11,12 +11,17 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"starsleep/internal/config"
+	"starsleep/internal/i18n"
+	"starsleep/internal/overlay"
+	"starsleep/internal/util"
 )
 
 func cmdBuild(args []string) {
-	checkRoot()
+	util.CheckRoot()
 
-	configDir, remaining := parseConfigFlags(args)
+	configDir, remaining := config.ParseConfigFlags(defaultConfigDir, args)
 
 	clean := false
 	verify := false
@@ -32,7 +37,7 @@ func cmdBuild(args []string) {
 		case "--verify":
 			verify = true
 		default:
-			fatal(T("build.unknown.arg", remaining[i]))
+			util.Fatal(i18n.T("build.unknown.arg", remaining[i]))
 		}
 	}
 
@@ -41,14 +46,10 @@ func cmdBuild(args []string) {
 	merged := filepath.Join(workDir, "work/merged")
 	ovlWork := filepath.Join(workDir, "work/ovl_work")
 	logDir := filepath.Join(workDir, "logs")
-	ts := timestamp()
+	ts := util.Timestamp()
 
-	initLog(logDir)
-	defer func() {
-		if logFile != nil {
-			logFile.Close()
-		}
-	}()
+	util.InitLog(logDir)
+	defer util.CloseLog()
 
 	os.MkdirAll(logDir, 0o755)
 	os.MkdirAll(filepath.Join(workDir, "work"), 0o755)
@@ -56,51 +57,48 @@ func cmdBuild(args []string) {
 	// 清理工作区（仅在 --clean 时）
 	if clean {
 		if len(cleanLayers) == 0 {
-			logMsg("%s", T("clean.workspace"))
+			util.LogMsg("%s", i18n.T("clean.workspace"))
 			os.RemoveAll(filepath.Join(workDir, "layers"))
 			os.MkdirAll(filepath.Join(workDir, "layers"), 0o755)
-			logMsg("%s", T("workspace.cleaned"))
+			util.LogMsg("%s", i18n.T("workspace.cleaned"))
 		} else {
 			for _, name := range cleanLayers {
 				layerDir := filepath.Join(workDir, "layers", filepath.Base(name))
-				logMsg(T("clean.layer"), name)
+				util.LogMsg(i18n.T("clean.layer"), name)
 				os.RemoveAll(layerDir)
 			}
-			logMsg(T("clean.layers.done"), len(cleanLayers))
+			util.LogMsg(i18n.T("clean.layers.done"), len(cleanLayers))
 		}
 	}
 
 	// 清理残留挂载
-	if isMountpoint(merged) {
-		logMsg(T("stale.mount"), merged)
+	if util.IsMountpoint(merged) {
+		util.LogMsg(i18n.T("stale.mount"), merged)
 		syscall.Sync()
 		unmountRecursive(merged)
 		time.Sleep(500 * time.Millisecond)
 	}
 
 	// 加载配置
-	layers, _, err := loadAllLayers(configDir)
+	layers, _, err := config.LoadAllLayers(configDir)
 	if err != nil {
-		fatal(T("load.config.failed", err))
+		util.Fatal(i18n.T("load.config.failed", err))
 	}
 
-	logMsg("%s", T("build.start"))
-	logMsg(T("build.time"), ts)
-	logMsg(T("stage.count"), len(layers))
+	util.LogMsg("%s", i18n.T("build.start"))
+	util.LogMsg(i18n.T("build.time"), ts)
+	util.LogMsg(i18n.T("stage.count"), len(layers))
 
 	// 初始化展平子卷
 	if isBtrfsSubvolume(flatDir) {
-		run("btrfs", "subvolume", "delete", flatDir)
+		util.Run("btrfs", "subvolume", "delete", flatDir)
 	}
-	if err := run("btrfs", "subvolume", "create", flatDir); err != nil {
-		fatal(T("create.flat.failed", err))
+	if err := util.Run("btrfs", "subvolume", "create", flatDir); err != nil {
+		util.Fatal(i18n.T("create.flat.failed", err))
 	}
-	logMsg(T("flat.ready"), flatDir)
+	util.LogMsg(i18n.T("flat.ready"), flatDir)
 
 	// 逐层构建与展平
-	// 每层使用 reflink 备份保护：构建前 cp --reflink=always 备份 upper，
-	// 直接在 upper 上操作，成功则删除备份；失败则丢弃 upper 恢复备份。
-	// 使用 reflink 而非 btrfs 子卷快照，避免 OverlayFS 跨设备 EXDEV 错误。
 	var layerDirs []string
 
 	for i, cfg := range layers {
@@ -112,25 +110,25 @@ func cmdBuild(args []string) {
 		os.MkdirAll(merged, 0o755)
 		os.MkdirAll(ovlWorkDir, 0o755)
 
-		// 清理可能残留的上次失败的备份（说明上次此层失败，恢复）
+		// 清理可能残留的上次失败的备份
 		if _, err := os.Stat(upperBak); err == nil {
-			logMsg(T("layer.backup.detected"), cfg.Name)
+			util.LogMsg(i18n.T("layer.backup.detected"), cfg.Name)
 			os.RemoveAll(upper)
 			os.Rename(upperBak, upper)
 		}
 
-		// 创建 reflink 备份（btrfs 上 --reflink=always 零拷贝 CoW）
-		if err := run("cp", "-a", "--reflink=always", upper, upperBak); err != nil {
-			fatal(T("layer.backup.failed", err))
+		// 创建 reflink 备份
+		if err := util.Run("cp", "-a", "--reflink=always", upper, upperBak); err != nil {
+			util.Fatal(i18n.T("layer.backup.failed", err))
 		}
 
-		logMsg(T("build.layer"), cfg.Name, cfg.Helper)
+		util.LogMsg(i18n.T("build.layer"), cfg.Name, cfg.Helper)
 
-		// 挂载 OverlayFS（upper 为普通目录，与 flat 子卷共享 st_dev）
+		// 挂载 OverlayFS
 		ovlOpts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s,index=off,metacopy=off",
 			flatDir, upper, ovlWorkDir)
 		if err := syscall.Mount("overlay", merged, "overlay", 0, ovlOpts); err != nil {
-			fatal(T("mount.overlay.failed", err))
+			util.Fatal(i18n.T("mount.overlay.failed", err))
 		}
 
 		// 绑定挂载包缓存
@@ -145,16 +143,16 @@ func cmdBuild(args []string) {
 		}
 
 		// 调用同步
-		expectedPkgs := buildCumulativePkgs(layers, i)
-		expectedSvcs := buildCumulativeServices(layers, i)
+		expectedPkgs := config.BuildCumulativePkgs(layers, i)
+		expectedSvcs := config.BuildCumulativeServices(layers, i)
 		layerOk := runSyncSafe(merged, cfg, expectedPkgs, expectedSvcs)
 
 		// 卸载
 		syscall.Sync()
 		if err := unmountRecursive(merged); err != nil {
-			logMsg("%s", T("unmount.fallback"))
+			util.LogMsg("%s", i18n.T("unmount.fallback"))
 			syscall.Unmount(merged, syscall.MNT_DETACH)
-			for retry := 0; isMountpoint(merged) && retry < 10; retry++ {
+			for retry := 0; util.IsMountpoint(merged) && retry < 10; retry++ {
 				time.Sleep(500 * time.Millisecond)
 			}
 		}
@@ -163,45 +161,44 @@ func cmdBuild(args []string) {
 		os.RemoveAll(ovlWorkDir)
 
 		if !layerOk {
-			// 同步失败：丢弃修改后的 upper，从备份恢复
-			logMsg(T("layer.sync.restore"), cfg.Name)
+			util.LogMsg(i18n.T("layer.sync.restore"), cfg.Name)
 			os.RemoveAll(upper)
 			os.Rename(upperBak, upper)
-			fatal(T("layer.build.failed", cfg.Name))
+			util.Fatal(i18n.T("layer.build.failed", cfg.Name))
 		}
 
 		// 同步成功：删除备份
 		os.RemoveAll(upperBak)
 
 		// 展平
-		logMsg(T("flatten.layer"), cfg.Name)
-		st, err := flattenOverlay(flatDir, upper)
+		util.LogMsg(i18n.T("flatten.layer"), cfg.Name)
+		st, err := overlay.FlattenOverlay(flatDir, upper)
 		if err != nil {
-			fatal(T("flatten.failed", cfg.Name, err))
+			util.Fatal(i18n.T("flatten.failed", cfg.Name, err))
 		}
-		logMsg(T("flatten.stats"),
-			st.files, st.dirs, st.symlinks, st.hardlinks, st.whiteouts, st.opaques)
+		util.LogMsg(i18n.T("flatten.stats"),
+			st.Files, st.Dirs, st.Symlinks, st.Hardlinks, st.Whiteouts, st.Opaques)
 
-		logMsg(T("layer.done"), cfg.Name)
+		util.LogMsg(i18n.T("layer.done"), cfg.Name)
 		layerDirs = append(layerDirs, upper)
 	}
 
 	// 一致性校验
 	if verify {
-		logMsg("%s", T("verify.start"))
+		util.LogMsg("%s", i18n.T("verify.start"))
 		if !runVerify(flatDir, layerDirs) {
-			fatal(T("verify.failed"))
+			util.Fatal(i18n.T("verify.failed"))
 		}
-		logMsg("%s", T("verify.passed"))
+		util.LogMsg("%s", i18n.T("verify.passed"))
 	}
 
 	// 生成快照
 	snapshotName := "snapshot-" + ts
 	snapshotDir := filepath.Join(workDir, "snapshots", snapshotName)
-	logMsg(T("create.snapshot"), snapshotName)
+	util.LogMsg(i18n.T("create.snapshot"), snapshotName)
 
-	if err := run("btrfs", "subvolume", "snapshot", flatDir, snapshotDir); err != nil {
-		fatal(T("snapshot.failed", err))
+	if err := util.Run("btrfs", "subvolume", "snapshot", flatDir, snapshotDir); err != nil {
+		util.Fatal(i18n.T("snapshot.failed", err))
 	}
 
 	// 应用继承列表
@@ -212,9 +209,9 @@ func cmdBuild(args []string) {
 	os.Remove(latestLink)
 	os.Symlink(snapshotDir, latestLink)
 
-	logMsg("%s", T("build.done"))
-	logMsg(T("snapshot.path"), snapshotDir)
-	logMsg(T("snapshot.link"), workDir, snapshotName)
+	util.LogMsg("%s", i18n.T("build.done"))
+	util.LogMsg(i18n.T("snapshot.path"), snapshotDir)
+	util.LogMsg(i18n.T("snapshot.link"), workDir, snapshotName)
 }
 
 // bindVFS 绑定挂载虚拟文件系统到目标根
@@ -228,7 +225,6 @@ func bindVFS(root string) {
 		os.MkdirAll(m.dst, 0o755)
 		syscall.Mount(m.src, m.dst, "", syscall.MS_BIND, "")
 	}
-	// devpts
 	devpts := filepath.Join(root, "dev/pts")
 	os.MkdirAll(devpts, 0o755)
 	syscall.Mount("devpts", devpts, "devpts", 0, "")
@@ -243,7 +239,6 @@ func bindVFS(root string) {
 
 // unmountRecursive 递归卸载（模拟 umount -R）
 func unmountRecursive(path string) error {
-	// 读取 /proc/mounts 找到所有子挂载点，按路径长度逆序卸载
 	data, err := os.ReadFile("/proc/mounts")
 	if err != nil {
 		return syscall.Unmount(path, 0)
@@ -260,14 +255,12 @@ func unmountRecursive(path string) error {
 		}
 	}
 
-	// 逆序卸载（最深的先卸载）
 	for i := len(mountpoints) - 1; i >= 0; i-- {
 		syscall.Unmount(mountpoints[i], 0)
 	}
 	return nil
 }
 
-// hasPathPrefix 检查 path 是否以 prefix/ 开头
 func hasPathPrefix(path, prefix string) bool {
 	if len(path) <= len(prefix) {
 		return false
@@ -311,21 +304,20 @@ func splitFields(s string) []string {
 
 // isBtrfsSubvolume 检查路径是否为 btrfs 子卷
 func isBtrfsSubvolume(path string) bool {
-	return run("btrfs", "subvolume", "show", path) == nil
+	return util.Run("btrfs", "subvolume", "show", path) == nil
 }
 
 // runSyncSafe 调用 syncLayer 并捕获 fatal panic，返回是否成功。
-// 通过启用 fatalPanicMode 将 fatal() 转为 panic，由 recover 捕获。
-func runSyncSafe(root string, cfg *LayerConfig, expectedPkgs, expectedSvcs []string) (ok bool) {
-	oldMode := fatalPanicMode
-	fatalPanicMode = true
+func runSyncSafe(root string, cfg *config.LayerConfig, expectedPkgs, expectedSvcs []string) (ok bool) {
+	oldMode := util.FatalPanicMode
+	util.FatalPanicMode = true
 	defer func() {
-		fatalPanicMode = oldMode
+		util.FatalPanicMode = oldMode
 		if r := recover(); r != nil {
-			if fe, isFatal := r.(fatalError); isFatal {
-				logMsg(T("layer.sync.error"), cfg.Name, fe.msg)
+			if fe, isFatal := r.(util.FatalError); isFatal {
+				util.LogMsg(i18n.T("layer.sync.error"), cfg.Name, fe.Error())
 			} else {
-				logMsg(T("layer.sync.panic"), cfg.Name, r)
+				util.LogMsg(i18n.T("layer.sync.panic"), cfg.Name, r)
 			}
 			ok = false
 		}
@@ -337,19 +329,19 @@ func runSyncSafe(root string, cfg *LayerConfig, expectedPkgs, expectedSvcs []str
 
 // applyInheritList 从当前系统复制继承路径到快照
 func applyInheritList(configDir, snapshotDir string) {
-	paths, err := loadInheritList(configDir)
+	paths, err := config.LoadInheritList(configDir)
 	if err != nil || len(paths) == 0 {
 		if err != nil {
-			logMsg("%s", T("inherit.not.found"))
+			util.LogMsg("%s", i18n.T("inherit.not.found"))
 		}
 		return
 	}
 
-	logMsg(T("apply.inherit"), len(paths))
+	util.LogMsg(i18n.T("apply.inherit"), len(paths))
 	for _, entry := range paths {
 		fi, err := os.Stat(entry)
 		if err != nil {
-			logMsg(T("inherit.path.missing"), entry)
+			util.LogMsg(i18n.T("inherit.path.missing"), entry)
 			continue
 		}
 
@@ -357,16 +349,16 @@ func applyInheritList(configDir, snapshotDir string) {
 		os.MkdirAll(filepath.Dir(dst), 0o755)
 
 		if fi.IsDir() {
-			if err := run("cp", "-ax", "--reflink=auto", entry, filepath.Dir(dst)+"/"); err != nil {
-				logMsg(T("copy.dir.failed"), entry, err)
+			if err := util.Run("cp", "-ax", "--reflink=auto", entry, filepath.Dir(dst)+"/"); err != nil {
+				util.LogMsg(i18n.T("copy.dir.failed"), entry, err)
 			} else {
-				logMsg(T("inherit.dir"), entry)
+				util.LogMsg(i18n.T("inherit.dir"), entry)
 			}
 		} else {
-			if err := run("cp", "-a", "--reflink=auto", entry, dst); err != nil {
-				logMsg(T("copy.file.failed"), entry, err)
+			if err := util.Run("cp", "-a", "--reflink=auto", entry, dst); err != nil {
+				util.LogMsg(i18n.T("copy.file.failed"), entry, err)
 			} else {
-				logMsg(T("inherit.file"), entry)
+				util.LogMsg(i18n.T("inherit.file"), entry)
 			}
 		}
 	}

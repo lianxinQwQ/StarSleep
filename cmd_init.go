@@ -1,6 +1,6 @@
-// init_cmd.go — starsleep init 命令
+// cmd_init.go — starsleep init 命令
 //
-// 创建工作目录结构、复制配置模板
+// 初始化 StarSleep 工作环境：创建所需目录结构、检查依赖工具。
 package main
 
 import (
@@ -8,19 +8,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"starsleep/internal/config"
+	"starsleep/internal/i18n"
+	"starsleep/internal/util"
 )
 
 func cmdInit(args []string) {
-	checkRoot()
-
-	configDir, remaining := parseConfigFlags(args)
+	util.CheckRoot()
+	configDir, remaining := config.ParseConfigFlags(defaultConfigDir, args)
 	if len(remaining) > 0 {
-		fatal(T("init.unknown.arg", remaining[0]))
+		util.Fatal(i18n.T("init.unknown.arg", remaining[0]))
 	}
-
 	workDir := defaultWorkDir
-
-	// 依赖检查
 	requiredCmds := []string{
 		"pacstrap", "pacman", "arch-chroot",
 		"mount", "umount", "btrfs", "getfattr", "rsync", "setfattr",
@@ -31,22 +31,18 @@ func cmdInit(args []string) {
 			missing = append(missing, cmd)
 		}
 	}
-	// 检查 overlay 内核模块
-	if err := run("modprobe", "overlay"); err != nil {
+	if err := util.Run("modprobe", "overlay"); err != nil {
 		missing = append(missing, "overlay (kernel module)")
 	}
 	if len(missing) > 0 {
-		fmt.Fprintln(os.Stderr, T("missing.deps"))
+		fmt.Fprintln(os.Stderr, i18n.T("missing.deps"))
 		for _, m := range missing {
 			fmt.Fprintf(os.Stderr, "  - %s\n", m)
 		}
 		os.Exit(1)
 	}
-
-	fmt.Println(T("init.start"))
-	fmt.Println(T("init.workdir", workDir))
-
-	// 创建目录结构
+	fmt.Println(i18n.T("init.start"))
+	fmt.Println(i18n.T("init.workdir", workDir))
 	dirs := []string{
 		filepath.Join(workDir, "layers"),
 		filepath.Join(workDir, "snapshots"),
@@ -60,19 +56,16 @@ func cmdInit(args []string) {
 	for _, d := range dirs {
 		os.MkdirAll(d, 0o755)
 	}
-
-	// 复制配置
 	if configDir != defaultConfigDir {
-		fmt.Println(T("init.copy.config", configDir, defaultConfigDir))
-		if err := copyConfig(configDir, filepath.Join(workDir, "config")); err != nil {
-			fmt.Fprintln(os.Stderr, T("init.copy.config.warn", err))
+		fmt.Println(i18n.T("init.copy.config", configDir, defaultConfigDir))
+		if err := config.CopyConfig(configDir, filepath.Join(workDir, "config")); err != nil {
+			fmt.Fprintln(os.Stderr, i18n.T("init.copy.config.warn", err))
 		}
 	}
-
 	fmt.Println()
-	fmt.Println(T("init.done"))
-	fmt.Println(T("init.tree.header"))
-	fmt.Println(T("init.tree", workDir))
+	fmt.Println(i18n.T("init.done"))
+	fmt.Println(i18n.T("init.tree.header"))
+	fmt.Println(i18n.T("init.tree", workDir))
 	fmt.Println()
-	fmt.Println(T("init.next"))
+	fmt.Println(i18n.T("init.next"))
 }

@@ -1,37 +1,45 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"starsleep/internal/config"
+	"starsleep/internal/i18n"
+	"starsleep/internal/pkgmgr"
+	"starsleep/internal/service"
+	"starsleep/internal/util"
+)
 
 // syncLayer 根据配置的 helper 类型分发同步操作
-func syncLayer(root string, cfg *LayerConfig, expectedPkgs, expectedSvcs []string) {
+func syncLayer(root string, cfg *config.LayerConfig, expectedPkgs, expectedSvcs []string) {
 	printSyncHeader(cfg, root)
 
 	switch cfg.Helper {
 	case "pacstrap":
-		syncPacstrap(root, cfg.Packages, expectedPkgs)
+		pkgmgr.SyncPacstrap(root, cfg.Packages, expectedPkgs)
 	case "pacman":
-		syncPacman(root, cfg.Packages, expectedPkgs)
+		pkgmgr.SyncPacman(root, cfg.Packages, expectedPkgs)
 	case "paru":
-		syncParu(root, cfg.Packages, expectedPkgs)
+		pkgmgr.SyncParu(root, cfg.Packages, expectedPkgs)
 	case "enable_service":
-		syncEnableService(root, cfg.Services, expectedSvcs)
+		service.SyncEnableService(root, cfg.Services, expectedSvcs)
 	default:
-		fatal(T("sync.unknown.tool", cfg.Helper))
+		util.Fatal(i18n.T("sync.unknown.tool", cfg.Helper))
 	}
 
-	fmt.Println(T("sync.stage.done", cfg.Name))
+	fmt.Println(i18n.T("sync.stage.done", cfg.Name))
 }
 
-func printSyncHeader(cfg *LayerConfig, root string) {
-	fmt.Println(T("sync.separator"))
-	fmt.Println(T("sync.stage", cfg.Name))
-	fmt.Println(T("sync.tool", cfg.Helper))
-	fmt.Println(T("sync.target", root))
+func printSyncHeader(cfg *config.LayerConfig, root string) {
+	fmt.Println(i18n.T("sync.separator"))
+	fmt.Println(i18n.T("sync.stage", cfg.Name))
+	fmt.Println(i18n.T("sync.tool", cfg.Helper))
+	fmt.Println(i18n.T("sync.target", root))
 	switch cfg.Helper {
 	case "pacstrap", "pacman", "paru":
-		fmt.Println(T("sync.packages", len(cfg.Packages)))
+		fmt.Println(i18n.T("sync.packages", len(cfg.Packages)))
 	case "enable_service":
-		fmt.Println(T("sync.services", len(cfg.Services)))
+		fmt.Println(i18n.T("sync.services", len(cfg.Services)))
 	}
-	fmt.Println(T("sync.separator"))
+	fmt.Println(i18n.T("sync.separator"))
 }

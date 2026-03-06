@@ -1,4 +1,4 @@
-// deploy.go — starsleep flatten 命令
+// cmd_deploy.go — starsleep flatten 命令
 //
 // 将 StarSleep 快照的内核和 initramfs 复制到 ESP 分区，
 // 并生成 systemd-boot 引导条目。
@@ -9,6 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"starsleep/internal/i18n"
+	"starsleep/internal/util"
 )
 
 const (
@@ -21,11 +24,10 @@ const (
 )
 
 func cmdFlatten(args []string) {
-	checkRoot()
+	util.CheckRoot()
 
 	workDir := defaultWorkDir
 
-	// 参数解析
 	if len(args) > 0 {
 		switch args[0] {
 		case "--list":
@@ -33,14 +35,13 @@ func cmdFlatten(args []string) {
 			return
 		case "--remove":
 			if len(args) < 2 {
-				fatal(T("flatten.remove.usage"))
+				util.Fatal(i18n.T("flatten.remove.usage"))
 			}
 			removeBootEntry(args[1])
 			return
 		}
 	}
 
-	// 确定要部署的快照
 	var target string
 	if len(args) == 0 {
 		target = filepath.Join(workDir, "snapshots/latest")
@@ -48,7 +49,6 @@ func cmdFlatten(args []string) {
 		target = args[0]
 	}
 
-	// 解析软链接
 	if fi, err := os.Lstat(target); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		resolved, err := os.Readlink(target)
 		if err == nil {
@@ -56,13 +56,12 @@ func cmdFlatten(args []string) {
 		}
 	}
 
-	// 尝试补全路径
 	if _, err := os.Stat(target); err != nil {
 		full := filepath.Join(workDir, "snapshots", target)
 		if _, err2 := os.Stat(full); err2 == nil {
 			target = full
 		} else {
-			fatal(T("snapshot.not.exist", target))
+			util.Fatal(i18n.T("snapshot.not.exist", target))
 		}
 	}
 
@@ -70,35 +69,32 @@ func cmdFlatten(args []string) {
 	snapBoot := filepath.Join(target, "boot")
 
 	if _, err := os.Stat(snapBoot); err != nil {
-		fatal(T("boot.not.found", snapBoot))
+		util.Fatal(i18n.T("boot.not.found", snapBoot))
 	}
 
-	// 查找内核和 initramfs
 	vmlinuz := findFile(snapBoot, "vmlinuz-*")
 	initramfs := findFile(snapBoot, "initramfs-*.img")
 
 	if vmlinuz == "" {
-		fatal(T("kernel.not.found", snapBoot))
+		util.Fatal(i18n.T("kernel.not.found", snapBoot))
 	}
 	if initramfs == "" {
-		fatal(T("initramfs.not.found", snapBoot))
+		util.Fatal(i18n.T("initramfs.not.found", snapBoot))
 	}
 
-	fmt.Println(T("deploy.separator"))
-	fmt.Println(T("deploy.snapshot", snapName))
-	fmt.Println(T("deploy.kernel", filepath.Base(vmlinuz)))
-	fmt.Println(T("deploy.initramfs", filepath.Base(initramfs)))
-	fmt.Println(T("deploy.separator"))
+	fmt.Println(i18n.T("deploy.separator"))
+	fmt.Println(i18n.T("deploy.snapshot", snapName))
+	fmt.Println(i18n.T("deploy.kernel", filepath.Base(vmlinuz)))
+	fmt.Println(i18n.T("deploy.initramfs", filepath.Base(initramfs)))
+	fmt.Println(i18n.T("deploy.separator"))
 
-	// 复制 boot 文件到 ESP
 	bootDest := filepath.Join(bootDir, snapName)
 	os.MkdirAll(bootDest, 0o755)
 
 	copyFile(vmlinuz, filepath.Join(bootDest, "vmlinuz"))
 	copyFile(initramfs, filepath.Join(bootDest, "initramfs-linux.img"))
-	fmt.Println(T("deploy.boot.copied", bootDest))
+	fmt.Println(i18n.T("deploy.boot.copied", bootDest))
 
-	// 构建 initrd 列表
 	var initrdLines []string
 	for _, ucode := range []string{"/boot/amd-ucode.img", "/boot/intel-ucode.img"} {
 		if _, err := os.Stat(ucode); err == nil {
@@ -108,7 +104,6 @@ func cmdFlatten(args []string) {
 	initrdLines = append(initrdLines,
 		fmt.Sprintf("initrd /starsleep/%s/initramfs-linux.img", snapName))
 
-	// 生成 systemd-boot 引导条目
 	confName := fmt.Sprintf("starsleep-%s.conf", snapName)
 	confPath := filepath.Join(entryDir, confName)
 
@@ -124,20 +119,19 @@ options root="LABEL=%s" rootflags=subvol=/%s/%s %s
 		rootLabel, subvolPrefix, snapName, kernelOpts)
 
 	if err := os.WriteFile(confPath, []byte(entry), 0o644); err != nil {
-		fatal(T("write.entry.failed", err))
+		util.Fatal(i18n.T("write.entry.failed", err))
 	}
 
-	fmt.Println(T("deploy.entry.generated", confPath))
-	fmt.Println(T("deploy.separator"))
-	fmt.Println(T("deploy.done"))
+	fmt.Println(i18n.T("deploy.entry.generated", confPath))
+	fmt.Println(i18n.T("deploy.separator"))
+	fmt.Println(i18n.T("deploy.done"))
 	fmt.Println()
-	fmt.Println(T("deploy.reboot.hint"))
-	fmt.Println(T("deploy.reboot.entry", entryTitle, snapName))
+	fmt.Println(i18n.T("deploy.reboot.hint"))
+	fmt.Println(i18n.T("deploy.reboot.entry", entryTitle, snapName))
 }
 
-// listBootEntries 列出已部署的引导条目
 func listBootEntries() {
-	fmt.Println(T("deploy.list.header"))
+	fmt.Println(i18n.T("deploy.list.header"))
 	found := false
 	entries, _ := filepath.Glob(filepath.Join(entryDir, "starsleep-*.conf"))
 	for _, conf := range entries {
@@ -159,29 +153,27 @@ func listBootEntries() {
 		fmt.Printf("  %s  (%s)\n", name, title)
 	}
 	if !found {
-		fmt.Println(T("deploy.list.empty"))
+		fmt.Println(i18n.T("deploy.list.empty"))
 	}
 }
 
-// removeBootEntry 移除引导条目
 func removeBootEntry(snapName string) {
 	conf := filepath.Join(entryDir, fmt.Sprintf("starsleep-%s.conf", snapName))
 	bootSnap := filepath.Join(bootDir, snapName)
 
 	if _, err := os.Stat(conf); err == nil {
 		os.Remove(conf)
-		fmt.Println(T("deploy.removed.entry", conf))
+		fmt.Println(i18n.T("deploy.removed.entry", conf))
 	} else {
-		fmt.Println(T("deploy.entry.not.exist", conf))
+		fmt.Println(i18n.T("deploy.entry.not.exist", conf))
 	}
 
 	if _, err := os.Stat(bootSnap); err == nil {
 		os.RemoveAll(bootSnap)
-		fmt.Println(T("deploy.removed.boot", bootSnap))
+		fmt.Println(i18n.T("deploy.removed.boot", bootSnap))
 	}
 }
 
-// findFile 在目录中按 glob 模式查找第一个匹配文件
 func findFile(dir, pattern string) string {
 	matches, err := filepath.Glob(filepath.Join(dir, pattern))
 	if err != nil || len(matches) == 0 {
@@ -190,13 +182,12 @@ func findFile(dir, pattern string) string {
 	return matches[0]
 }
 
-// copyFile 复制文件
 func copyFile(src, dst string) {
 	data, err := os.ReadFile(src)
 	if err != nil {
-		fatal(T("read.file.failed", src, err))
+		util.Fatal(i18n.T("read.file.failed", src, err))
 	}
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
-		fatal(T("write.file.failed", dst, err))
+		util.Fatal(i18n.T("write.file.failed", dst, err))
 	}
 }

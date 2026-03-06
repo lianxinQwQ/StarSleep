@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"starsleep/internal/i18n"
 )
 
 const (
@@ -11,8 +13,8 @@ const (
 )
 
 func main() {
-	initI18n()
-	args := extractGlobalFlags(os.Args[1:])
+	i18n.Init()
+	args := i18n.ExtractGlobalFlags(os.Args[1:])
 
 	if len(args) < 1 {
 		printUsage()
@@ -34,12 +36,12 @@ func main() {
 	case "verify":
 		cmdVerify(cmdArgs)
 	default:
-		fmt.Fprintln(os.Stderr, T("unknown.cmd", cmd))
+		fmt.Fprintln(os.Stderr, i18n.T("unknown.cmd", cmd))
 		printUsage()
 		os.Exit(1)
 	}
 }
 
 func printUsage() {
-	fmt.Println(T("usage"))
+	fmt.Println(i18n.T("usage"))
 }
