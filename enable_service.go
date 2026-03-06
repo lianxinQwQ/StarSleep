@@ -10,9 +10,12 @@ import (
 
 // syncEnableService 使用 systemctl --root 启用 systemd 服务，并禁用不在累积列表中的服务
 func syncEnableService(root string, services, expectedSvcs []string) {
-	// 构建期望集合
-	expectedSet := make(map[string]bool, len(expectedSvcs))
+	// 构建期望集合（白名单包含当前层，避免先禁用后启用）
+	expectedSet := make(map[string]bool, len(expectedSvcs)+len(services))
 	for _, svc := range expectedSvcs {
+		expectedSet[svc] = true
+	}
+	for _, svc := range services {
 		expectedSet[svc] = true
 	}
 
