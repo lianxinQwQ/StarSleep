@@ -165,7 +165,6 @@ flatten options:
 	"maintain.step5":          "[Maintain] Step 5/5: Creating snapshot and deploying boot entry...",
 	"maintain.snapshot.name":  "[Maintain] Snapshot name: %s",
 	"maintain.detect.failed":  "[Maintain] Failed to detect current snapshot: %v",
-	"maintain.bad.snapshot":   "[Maintain] Cannot extract timestamp from snapshot name: %s",
 	"maintain.done":           "[Maintain] ✓ Dynamic maintenance complete",
 	"maintain.query.failed":   "[Maintain] Warning: failed to query explicit packages: %v",
 	"maintain.demote":         "[Maintain] Demoting %d packages to deps: %s",

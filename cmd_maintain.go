@@ -16,8 +16,6 @@ import (
 	"starsleep/internal/util"
 )
 
-const snapshotTimestampLen = 15 // YYYYMMDD-HHMMSS
-
 func cmdMaintain(args []string) {
 	util.CheckRoot()
 
@@ -103,12 +101,7 @@ func cmdMaintain(args []string) {
 	// 5. 创建快照并部署引导
 	fmt.Println(i18n.T("maintain.step5"))
 	currentSnap := detectCurrentSnapshot()
-	origTs := extractOriginalTimestamp(currentSnap)
-	if origTs == "" {
-		util.Fatal(i18n.T("maintain.bad.snapshot", currentSnap))
-	}
-	newTs := util.Timestamp()
-	newSnapName := fmt.Sprintf("snapshot-%s-%s", origTs, newTs)
+	newSnapName := currentSnap + "-" + util.Timestamp()
 	snapshotDir := filepath.Join(defaultWorkDir, "snapshots", newSnapName)
 
 	fmt.Println(i18n.T("maintain.snapshot.name", newSnapName))
@@ -143,21 +136,6 @@ func detectCurrentSnapshot() string {
 		}
 	}
 	util.Fatal(i18n.T("maintain.detect.failed", "subvol not found in /proc/cmdline"))
-	return ""
-}
-
-// extractOriginalTimestamp 从快照名称中提取原始构建时间戳
-// snapshot-YYYYMMDD-HHMMSS           → YYYYMMDD-HHMMSS
-// snapshot-YYYYMMDD-HHMMSS-YYYYMMDD-HHMMSS → YYYYMMDD-HHMMSS (首个)
-func extractOriginalTimestamp(snapName string) string {
-	prefix := "snapshot-"
-	if !strings.HasPrefix(snapName, prefix) {
-		return ""
-	}
-	rest := snapName[len(prefix):]
-	if len(rest) >= snapshotTimestampLen {
-		return rest[:snapshotTimestampLen]
-	}
 	return ""
 }
 

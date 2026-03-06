@@ -165,7 +165,6 @@ flatten 选项:
 	"maintain.step5":          "[Maintain] 步骤 5/5: 创建快照并部署引导...",
 	"maintain.snapshot.name":  "[Maintain] 快照名称: %s",
 	"maintain.detect.failed":  "[Maintain] 无法检测当前快照: %v",
-	"maintain.bad.snapshot":   "[Maintain] 无法从快照名称提取时间戳: %s",
 	"maintain.done":           "[Maintain] ✓ 动态维护完成",
 	"maintain.query.failed":   "[Maintain] 警告: 查询显式包列表失败: %v",
 	"maintain.demote":         "[Maintain] 降级 %d 个包为依赖: %s",
