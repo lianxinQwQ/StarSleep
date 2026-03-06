@@ -57,3 +57,27 @@ func listOrphans(root string) ([]string, error) {
 	}
 	return orphans, nil
 }
+
+// expandPkgGroups 展开包列表中的组名为成员包，返回包含所有期望包名的集合。
+// 使用 pacman -Sg 查询同步数据库，将组名展开为成员包名。
+func expandPkgGroups(pkgs []string) map[string]bool {
+	result := make(map[string]bool, len(pkgs))
+	for _, pkg := range pkgs {
+		result[pkg] = true
+	}
+	if len(pkgs) == 0 {
+		return result
+	}
+	args := append([]string{"-Sg", "--"}, pkgs...)
+	output, _ := runSilent("pacman", args...)
+	if output == "" {
+		return result
+	}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			result[fields[1]] = true
+		}
+	}
+	return result
+}

@@ -102,10 +102,7 @@ func cmdMaintain(args []string) {
 
 // maintainCleanup 在当前系统上执行声明式清理
 func maintainCleanup(root, dbPath string, expectedPkgs []string) {
-	expectedSet := make(map[string]bool, len(expectedPkgs))
-	for _, pkg := range expectedPkgs {
-		expectedSet[pkg] = true
-	}
+	expectedSet := expandPkgGroups(expectedPkgs)
 
 	// 降级多余的显式安装包为依赖
 	explicitPkgs, err := listExplicitPkgs(root)

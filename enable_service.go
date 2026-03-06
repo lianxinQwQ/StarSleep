@@ -5,19 +5,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
 // syncEnableService 使用 systemctl --root 启用 systemd 服务，并禁用不在累积列表中的服务
 func syncEnableService(root string, services, expectedSvcs []string) {
-	// 构建期望集合（去掉 .service 后缀以匹配 listEnabledServices 的输出）
-	expectedSet := make(map[string]bool, len(expectedSvcs)+len(services))
-	for _, svc := range expectedSvcs {
-		expectedSet[strings.TrimSuffix(svc, ".service")] = true
-	}
-	for _, svc := range services {
-		expectedSet[strings.TrimSuffix(svc, ".service")] = true
-	}
+	// 解析所有期望服务及其 Also=/Alias= 依赖，构建完整白名单
+	allConfigured := append(expectedSvcs, services...)
+	expectedSet := resolveServiceWithDeps(root, allConfigured)
 
 	// 清理：禁用不在期望列表中的已启用服务
 	enabled := listEnabledServices("--root", root)
@@ -47,10 +43,7 @@ func syncEnableService(root string, services, expectedSvcs []string) {
 // enableServiceLive 在当前运行系统上同步服务（动态维护模式）
 // 启用期望服务，禁用不在期望列表中的已启用服务
 func enableServiceLive(services []string) {
-	expectedSet := make(map[string]bool, len(services))
-	for _, svc := range services {
-		expectedSet[strings.TrimSuffix(svc, ".service")] = true
-	}
+	expectedSet := resolveServiceWithDeps("/", services)
 
 	// 禁用不在期望列表中的已启用服务
 	enabled := listEnabledServices()
@@ -68,6 +61,63 @@ func enableServiceLive(services []string) {
 			fmt.Fprintln(os.Stderr, T("maintain.enable.failed", svc, err))
 		}
 	}
+}
+
+// resolveServiceWithDeps 解析配置的服务及其 Also=/Alias= 隐式依赖，
+// 递归读取 unit 文件的 [Install] 段，返回完整的服务名集合（无 .service 后缀）。
+func resolveServiceWithDeps(root string, services []string) map[string]bool {
+	result := make(map[string]bool)
+	var resolve func(string)
+	resolve = func(svc string) {
+		name := strings.TrimSuffix(svc, ".service")
+		if result[name] {
+			return
+		}
+		result[name] = true
+
+		unitFile := name + ".service"
+		// 优先检查 /etc 覆盖，然后 /usr/lib
+		paths := []string{
+			filepath.Join(root, "etc/systemd/system", unitFile),
+			filepath.Join(root, "usr/lib/systemd/system", unitFile),
+		}
+		for _, unitPath := range paths {
+			data, err := os.ReadFile(unitPath)
+			if err != nil {
+				continue
+			}
+			inInstall := false
+			for _, line := range strings.Split(string(data), "\n") {
+				line = strings.TrimSpace(line)
+				if line == "[Install]" {
+					inInstall = true
+					continue
+				}
+				if strings.HasPrefix(line, "[") {
+					inInstall = false
+					continue
+				}
+				if !inInstall {
+					continue
+				}
+				if strings.HasPrefix(line, "Also=") {
+					for _, dep := range strings.Fields(strings.TrimPrefix(line, "Also=")) {
+						resolve(dep)
+					}
+				}
+				if strings.HasPrefix(line, "Alias=") {
+					for _, alias := range strings.Fields(strings.TrimPrefix(line, "Alias=")) {
+						result[strings.TrimSuffix(alias, ".service")] = true
+					}
+				}
+			}
+			break // 找到就不再查下一个路径
+		}
+	}
+	for _, svc := range services {
+		resolve(svc)
+	}
+	return result
 }
 
 // listEnabledServices 列出当前已启用的 systemd 服务单元名称

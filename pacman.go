@@ -9,10 +9,7 @@ import (
 
 // cleanupPacman 声明式清理：降级多余包 → 清理孤儿
 func cleanupPacman(root string, expectedPkgs []string) {
-	expectedSet := make(map[string]bool, len(expectedPkgs))
-	for _, pkg := range expectedPkgs {
-		expectedSet[pkg] = true
-	}
+	expectedSet := expandPkgGroups(expectedPkgs)
 
 	dbPath := filepath.Join(root, "var/lib/pacman")
 
