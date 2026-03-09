@@ -96,9 +96,11 @@ func cmdMaintain(args []string) {
 	if len(aurPkgs) > 0 {
 		fmt.Println(i18n.T("maintain.step3"))
 		paruArgs := append([]string{
-			"-S", "--needed", "--noconfirm",
+			"-u", "builder", "--",
+			"paru", "-S", "--needed", "--noconfirm",
+			"--root", root,
 		}, aurPkgs...)
-		if err := util.Run("paru", paruArgs...); err != nil {
+		if err := util.Run("runuser", paruArgs...); err != nil {
 			fmt.Fprintln(os.Stderr, i18n.T("maintain.paru.warn", err))
 		}
 	} else {
