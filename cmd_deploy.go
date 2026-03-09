@@ -2,6 +2,11 @@
 //
 // 将 StarSleep 快照的内核和 initramfs 复制到 ESP 分区，
 // 并生成 systemd-boot 引导条目。
+//
+// 支持的操作:
+//   - 部署快照到引导分区（默认或指定快照）
+//   - --list: 列出所有已部署的引导条目
+//   - --remove <名称>: 删除指定引导条目
 package main
 
 import (
@@ -15,14 +20,29 @@ import (
 )
 
 const (
-	bootDir      = "/boot/starsleep"
-	entryDir     = "/boot/loader/entries"
+	// bootDir ESP 分区上 StarSleep 启动文件存放目录
+	bootDir = "/boot/starsleep"
+	// entryDir systemd-boot 引导条目配置目录
+	entryDir = "/boot/loader/entries"
+	// subvolPrefix Btrfs 子卷前缀，用于引导参数中的 rootflags
 	subvolPrefix = "starsleep/snapshots"
-	entryTitle   = "StarSleep"
-	rootLabel    = "arkane_root"
-	kernelOpts   = "lsm=landlock,lockdown,yama,integrity,apparmor,bpf quiet splash loglevel=3 systemd.show_status=auto rd.udev.log_level=3 rw"
+	// entryTitle 引导条目标题
+	entryTitle = "StarSleep"
+	// rootLabel 根分区卷标
+	rootLabel = "arkane_root"
+	// kernelOpts 内核启动参数
+	kernelOpts = "lsm=landlock,lockdown,yama,integrity,apparmor,bpf quiet splash loglevel=3 systemd.show_status=auto rd.udev.log_level=3 rw"
 )
 
+// cmdFlatten 执行快照部署命令
+//
+// 将指定快照（或 latest）的内核和 initramfs 部署到 ESP 分区，
+// 并生成 systemd-boot 引导条目。
+//
+// @param args 命令行参数列表，支持:
+//   - --list: 列出已部署的引导条目
+//   - --remove <名称>: 删除指定引导条目
+//   - <快照路径>: 要部署的快照（默认: snapshots/latest）
 func cmdFlatten(args []string) {
 	util.CheckRoot()
 
@@ -44,11 +64,13 @@ func cmdFlatten(args []string) {
 
 	var target string
 	if len(args) == 0 {
+		// 未指定快照时使用 latest 符号链接
 		target = filepath.Join(workDir, "snapshots/latest")
 	} else {
 		target = args[0]
 	}
 
+	// 解析符号链接得到实际路径
 	if fi, err := os.Lstat(target); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		resolved, err := os.Readlink(target)
 		if err == nil {
@@ -56,6 +78,7 @@ func cmdFlatten(args []string) {
 		}
 	}
 
+	// 如果 target 不是绝对路径且不存在，尝试在 snapshots 目录下查找
 	if _, err := os.Stat(target); err != nil {
 		full := filepath.Join(workDir, "snapshots", target)
 		if _, err2 := os.Stat(full); err2 == nil {
@@ -76,6 +99,15 @@ func cmdFlatten(args []string) {
 }
 
 // deploySnapshot 将快照的内核和 initramfs 部署到 boot 分区并生成引导条目
+//
+// 操作步骤:
+//  1. 查找快照内的 vmlinuz-* 和 initramfs-*.img
+//  2. 复制到 ESP 分区的快照专属目录
+//  3. 生成 systemd-boot 引导条目配置文件
+//
+// @param target 快照目录的绝对路径
+// @param snapName 快照名称（用于引导条目命名）
+// @throws 找不到内核或 initramfs 时调用 Fatal 退出
 func deploySnapshot(target, snapName string) {
 	snapBoot := filepath.Join(target, "boot")
 
@@ -106,6 +138,7 @@ func deploySnapshot(target, snapName string) {
 	copyFile(initramfs, filepath.Join(bootDest, "initramfs-linux.img"))
 	fmt.Println(i18n.T("deploy.boot.copied", bootDest))
 
+	// 检测并添加 CPU 微码更新（AMD/Intel）到 initrd 行
 	var initrdLines []string
 	for _, ucode := range []string{"/boot/amd-ucode.img", "/boot/intel-ucode.img"} {
 		if _, err := os.Stat(ucode); err == nil {
@@ -115,6 +148,7 @@ func deploySnapshot(target, snapName string) {
 	initrdLines = append(initrdLines,
 		fmt.Sprintf("initrd /starsleep/%s/initramfs-linux.img", snapName))
 
+	// 生成 systemd-boot 引导条目配置文件
 	confName := fmt.Sprintf("starsleep-%s.conf", snapName)
 	confPath := filepath.Join(entryDir, confName)
 
@@ -136,6 +170,9 @@ options root="LABEL=%s" rootflags=subvol=/%s/%s %s
 	fmt.Println(i18n.T("deploy.entry.generated", confPath))
 }
 
+// listBootEntries 列出所有已部署的 StarSleep 引导条目
+//
+// 扫描 entryDir 中的 starsleep-*.conf 文件，解析每个条目的 title 并打印。
 func listBootEntries() {
 	fmt.Println(i18n.T("deploy.list.header"))
 	found := false
@@ -163,6 +200,9 @@ func listBootEntries() {
 	}
 }
 
+// removeBootEntry 删除指定快照的引导条目和启动文件
+//
+// @param snapName 快照名称
 func removeBootEntry(snapName string) {
 	conf := filepath.Join(entryDir, fmt.Sprintf("starsleep-%s.conf", snapName))
 	bootSnap := filepath.Join(bootDir, snapName)
@@ -180,6 +220,11 @@ func removeBootEntry(snapName string) {
 	}
 }
 
+// findFile 在指定目录下按 glob 模式查找第一个匹配的文件
+//
+// @param dir 搜索目录
+// @param pattern glob 匹配模式（如 "vmlinuz-*"）
+// @return 匹配的文件路径，未找到则返回空字符串
 func findFile(dir, pattern string) string {
 	matches, err := filepath.Glob(filepath.Join(dir, pattern))
 	if err != nil || len(matches) == 0 {
@@ -188,6 +233,13 @@ func findFile(dir, pattern string) string {
 	return matches[0]
 }
 
+// copyFile 复制文件内容
+//
+// 将源文件完整读入内存后写入目标路径。
+//
+// @param src 源文件路径
+// @param dst 目标文件路径
+// @throws 读写失败时调用 Fatal 退出
 func copyFile(src, dst string) {
 	data, err := os.ReadFile(src)
 	if err != nil {

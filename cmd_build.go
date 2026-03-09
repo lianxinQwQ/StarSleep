@@ -2,6 +2,16 @@
 //
 // 按照配置文件定义的阶段顺序，使用 OverlayFS 逐层构建环境，
 // 通过 reflink 展平合并，最终生成 Btrfs 快照。
+//
+// 构建流程:
+//  1. 解析命令行参数（--clean / --verify）
+//  2. 清理工作区（可选）
+//  3. 清理残留挂载点
+//  4. 加载配置文件中的所有层定义
+//  5. 初始化展平子卷（Btrfs subvolume）
+//  6. 逐层构建：挂载 OverlayFS → 同步包/服务 → 卸载 → reflink 展平
+//  7. 一致性校验（可选）
+//  8. 生成 Btrfs 快照并应用继承列表
 package main
 
 import (
@@ -18,18 +28,29 @@ import (
 	"starsleep/internal/util"
 )
 
+// cmdBuild 执行分层构建命令
+//
+// @param args 命令行参数列表，支持:
+//   - --clean [层名...]: 清理指定层或全部层后重新构建
+//   - --verify: 构建完成后执行展平一致性校验
+//   - -c/--config <路径>: 指定配置目录
+//
+// @throws 配置加载失败、展平子卷创建失败、OverlayFS 挂载失败等情况下调用 Fatal 退出
 func cmdBuild(args []string) {
 	util.CheckRoot()
 
+	// 解析 -c/--config 标志，提取配置目录路径
 	configDir, remaining := config.ParseConfigFlags(defaultConfigDir, args)
 
-	clean := false
-	verify := false
+	// ── 解析 build 专用参数 ──
+	clean := false  // 是否执行清理
+	verify := false // 是否在构建后执行一致性校验
 	var cleanLayers []string
 	for i := 0; i < len(remaining); i++ {
 		switch remaining[i] {
 		case "--clean":
 			clean = true
+			// --clean 后可跟指定层名，不指定则清理全部
 			for i+1 < len(remaining) && !strings.HasPrefix(remaining[i+1], "--") {
 				i++
 				cleanLayers = append(cleanLayers, remaining[i])
@@ -41,10 +62,11 @@ func cmdBuild(args []string) {
 		}
 	}
 
+	// ── 初始化关键路径 ──
 	workDir := defaultWorkDir
-	flatDir := filepath.Join(workDir, "work/flat")
-	merged := filepath.Join(workDir, "work/merged")
-	ovlWork := filepath.Join(workDir, "work/ovl_work")
+	flatDir := filepath.Join(workDir, "work/flat")     // 展平子卷路径
+	merged := filepath.Join(workDir, "work/merged")    // OverlayFS 合并挂载点
+	ovlWork := filepath.Join(workDir, "work/ovl_work") // OverlayFS 工作目录
 	logDir := filepath.Join(workDir, "logs")
 	ts := util.Timestamp()
 
@@ -102,8 +124,10 @@ func cmdBuild(args []string) {
 	var layerDirs []string
 
 	for i, cfg := range layers {
+		// upper 是当前层的 diff 数据目录，存放与前一层的差异
 		upper := filepath.Join(workDir, "layers", cfg.Name)
-		upperBak := upper + ".bak"
+		upperBak := upper + ".bak" // reflink 备份，用于同步失败时回滚
+		// 为每层创建独立的 ovl_work 目录（带纳秒时间戳避免冲突）
 		ovlWorkDir := filepath.Join(ovlWork, fmt.Sprintf("%s.%d", cfg.Name, time.Now().UnixNano()))
 
 		os.MkdirAll(upper, 0o755)
@@ -124,7 +148,11 @@ func cmdBuild(args []string) {
 
 		util.LogMsg(i18n.T("build.layer"), cfg.Name, cfg.Helper)
 
-		// 挂载 OverlayFS
+		// 挂载 OverlayFS:
+		// - lowerdir: 当前展平子卷（只读下层）
+		// - upperdir: 当前层 diff 目录（读写上层，记录变更）
+		// - workdir: OverlayFS 内部工作目录
+		// - index=off, metacopy=off: 禁用索引和元数据拷贝以保证兼容性
 		ovlOpts := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s,index=off,metacopy=off",
 			flatDir, upper, ovlWorkDir)
 		if err := syscall.Mount("overlay", merged, "overlay", 0, ovlOpts); err != nil {
@@ -142,7 +170,8 @@ func cmdBuild(args []string) {
 			bindVFS(merged)
 		}
 
-		// 调用同步
+		// 调用同步：在 OverlayFS 合并视图上执行包安装/服务启用
+		// 累积列表包含从第 0 层到当前层的所有包/服务，用于声明式清理
 		expectedPkgs := config.BuildCumulativePkgs(layers, i)
 		expectedSvcs := config.BuildCumulativeServices(layers, i)
 		layerOk := runSyncSafe(merged, cfg, expectedPkgs, expectedSvcs)
@@ -215,6 +244,12 @@ func cmdBuild(args []string) {
 }
 
 // bindVFS 绑定挂载虚拟文件系统到目标根
+//
+// 将宿主机的 /proc、/sys、/dev 绑定挂载到目标根目录下，
+// 使 chroot 环境中的工具（如 pacman）能正常工作。
+// 同时复制 /etc/resolv.conf 以确保 DNS 可用。
+//
+// @param root 目标根目录路径（通常是 OverlayFS merged 挂载点）
 func bindVFS(root string) {
 	mounts := []struct{ src, dst string }{
 		{"/proc", filepath.Join(root, "proc")},
@@ -237,7 +272,13 @@ func bindVFS(root string) {
 	}
 }
 
-// unmountRecursive 递归卸载（模拟 umount -R）
+// unmountRecursive 递归卸载指定路径下的所有挂载点（模拟 umount -R）
+//
+// 从 /proc/mounts 读取当前挂载信息，找到所有以 path 为前缀的挂载点，
+// 按路径深度倒序逐一卸载，确保子挂载点先于父挂载点卸载。
+//
+// @param path 要卸载的根路径
+// @return error 卸载过程中的错误（仅在无法读取 /proc/mounts 时回退到普通卸载）
 func unmountRecursive(path string) error {
 	data, err := os.ReadFile("/proc/mounts")
 	if err != nil {
@@ -261,6 +302,11 @@ func unmountRecursive(path string) error {
 	return nil
 }
 
+// hasPathPrefix 判断 path 是否以 prefix 为路径前缀（确保以 '/' 分隔）
+//
+// @param path 待检查的路径
+// @param prefix 前缀路径
+// @return 如果 path 以 prefix/ 开头则返回 true
 func hasPathPrefix(path, prefix string) bool {
 	if len(path) <= len(prefix) {
 		return false
@@ -268,6 +314,10 @@ func hasPathPrefix(path, prefix string) bool {
 	return path[:len(prefix)] == prefix && path[len(prefix)] == '/'
 }
 
+// splitLines 按换行符分割字符串为行切片
+//
+// @param s 待分割的字符串
+// @return 分割后的行切片
 func splitLines(s string) []string {
 	var lines []string
 	start := 0
@@ -283,6 +333,10 @@ func splitLines(s string) []string {
 	return lines
 }
 
+// splitFields 按空白字符（空格/制表符）分割字符串为字段切片
+//
+// @param s 待分割的字符串
+// @return 分割后的字段切片
 func splitFields(s string) []string {
 	var fields []string
 	i := 0
@@ -302,12 +356,26 @@ func splitFields(s string) []string {
 	return fields
 }
 
-// isBtrfsSubvolume 检查路径是否为 btrfs 子卷
+// isBtrfsSubvolume 检查路径是否为 Btrfs 子卷
+//
+// 通过调用 btrfs subvolume show 命令来判断。
+//
+// @param path 要检查的路径
+// @return 如果是 Btrfs 子卷返回 true
 func isBtrfsSubvolume(path string) bool {
 	return util.Run("btrfs", "subvolume", "show", path) == nil
 }
 
-// runSyncSafe 调用 syncLayer 并捕获 fatal panic，返回是否成功。
+// runSyncSafe 安全地调用 syncLayer，捕获 fatal panic 并返回是否成功
+//
+// 临时启用 FatalPanicMode，使 util.Fatal 抛出 panic 而非直接 os.Exit，
+// 从而允许调用方在同步失败时执行回滚逻辑（恢复 upper 层备份）。
+//
+// @param root 目标根目录路径
+// @param cfg 当前层配置
+// @param expectedPkgs 到当前层为止的累积包列表
+// @param expectedSvcs 到当前层为止的累积服务列表
+// @return ok 同步是否成功
 func runSyncSafe(root string, cfg *config.LayerConfig, expectedPkgs, expectedSvcs []string) (ok bool) {
 	oldMode := util.FatalPanicMode
 	util.FatalPanicMode = true
@@ -328,6 +396,12 @@ func runSyncSafe(root string, cfg *config.LayerConfig, expectedPkgs, expectedSvc
 }
 
 // applyInheritList 从当前系统复制继承路径到快照
+//
+// 根据 inherit.list 配置文件中列出的路径，将宿主机上的文件或目录
+// 通过 reflink 复制到新生成的快照中，实现配置/数据的跨快照继承。
+//
+// @param configDir 配置目录路径（包含 inherit.list 文件）
+// @param snapshotDir 目标快照目录路径
 func applyInheritList(configDir, snapshotDir string) {
 	paths, err := config.LoadInheritList(configDir)
 	if err != nil || len(paths) == 0 {

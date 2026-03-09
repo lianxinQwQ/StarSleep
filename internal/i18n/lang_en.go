@@ -1,5 +1,7 @@
+// lang_en.go — 英文翻译映射表
 package i18n
 
+// enMessages 包含所有英文翻译条目，键为 i18n.T() 的 key，值为对应的英文模板
 var enMessages = map[string]string{
 	// ── main.go ──
 	"unknown.cmd": "Unknown command: %s",

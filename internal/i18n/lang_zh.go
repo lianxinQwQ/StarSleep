@@ -1,5 +1,7 @@
+// lang_zh.go — 中文翻译映射表
 package i18n
 
+// zhMessages 包含所有中文翻译条目，键为 i18n.T() 的 key，值为对应的中文模板
 var zhMessages = map[string]string{
 	// ── main.go ──
 	"unknown.cmd": "未知命令: %s",

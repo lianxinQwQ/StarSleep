@@ -1,3 +1,10 @@
+// config 包提供 StarSleep 配置文件的加载、解析和管理功能。
+//
+// 配置目录结构:
+//
+//	config/
+//	├── layers/        # 层定义 YAML 文件（按文件名排序确定构建顺序）
+//	└── inherit.list   # 继承路径列表
 package config
 
 import (
@@ -15,6 +22,13 @@ import (
 )
 
 // LayerConfig 表示一个配置层的 YAML 结构
+//
+// 每个层定义了名称、使用的工具（helper）、待安装的包列表和待启用的服务列表。
+// helper 类型决定了如何处理该层:
+//   - pacstrap: 使用 pacstrap 初始化基础系统
+//   - pacman: 使用 pacman 同步官方仓库包
+//   - paru: 使用 paru 安装 AUR 包
+//   - enable_service: 启用 systemd 服务
 type LayerConfig struct {
 	Name     string   `yaml:"name"`
 	Helper   string   `yaml:"helper"`
@@ -23,6 +37,10 @@ type LayerConfig struct {
 }
 
 // loadLayerConfig 从 YAML 文件加载单个层配置
+//
+// @param path YAML 文件的绝对路径
+// @return 解析后的层配置结构体指针
+// @return error 文件读取或 YAML 解析失败时返回错误
 func loadLayerConfig(path string) (*LayerConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -35,7 +53,13 @@ func loadLayerConfig(path string) (*LayerConfig, error) {
 	return &cfg, nil
 }
 
-// LoadAllLayers 加载配置目录下所有层配置，按文件名排序
+// LoadAllLayers 加载配置目录下所有层配置，按文件名字母序排序
+//
+// 扫描 configDir/layers/ 下所有 *.yaml 文件，按文件名排序后逐个加载。
+// 文件名序决定了层的构建顺序（如 01-base.yaml 先于 02-desktop.yaml）。
+//
+// @param configDir 配置目录路径
+// @return 解析后的层配置切片、对应的文件路径切片、以及可能的错误
 func LoadAllLayers(configDir string) ([]*LayerConfig, []string, error) {
 	layersDir := filepath.Join(configDir, "layers")
 	matches, err := filepath.Glob(filepath.Join(layersDir, "*.yaml"))
@@ -58,6 +82,13 @@ func LoadAllLayers(configDir string) ([]*LayerConfig, []string, error) {
 }
 
 // LoadInheritList 从 inherit.list 文件加载继承路径列表
+//
+// inherit.list 文件每行一个路径，支持 # 注释和空行。
+// 这些路径将在构建完成后从宿主机复制到快照中。
+//
+// @param configDir 配置目录路径
+// @return 继承路径切片，文件不存在时返回 nil
+// @return error 文件读取失败时返回错误
 func LoadInheritList(configDir string) ([]string, error) {
 	path := filepath.Join(configDir, "inherit.list")
 	f, err := os.Open(path)
@@ -72,6 +103,7 @@ func LoadInheritList(configDir string) ([]string, error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		// 去除行内注释
 		if idx := strings.Index(line, "#"); idx >= 0 {
 			line = strings.TrimSpace(line[:idx])
 		}
@@ -84,6 +116,13 @@ func LoadInheritList(configDir string) ([]string, error) {
 }
 
 // BuildCumulativePkgs 构建到指定层为止的累积包列表
+//
+// 将第 0 层到第 upToIndex 层的所有包名合并为一个列表，
+// 用于声明式清理的期望包集合。
+//
+// @param layers 所有层配置切片
+// @param upToIndex 累积到的层索引（包含）
+// @return 累积的包名切片
 func BuildCumulativePkgs(layers []*LayerConfig, upToIndex int) []string {
 	var pkgs []string
 	for i := 0; i <= upToIndex && i < len(layers); i++ {
@@ -95,6 +134,12 @@ func BuildCumulativePkgs(layers []*LayerConfig, upToIndex int) []string {
 }
 
 // BuildCumulativeServices 构建到指定层为止的累积服务列表
+//
+// 与 BuildCumulativePkgs 类似，将第 0 层到第 upToIndex 层的所有服务合并。
+//
+// @param layers 所有层配置切片
+// @param upToIndex 累积到的层索引（包含）
+// @return 累积的服务名切片
 func BuildCumulativeServices(layers []*LayerConfig, upToIndex int) []string {
 	var svcs []string
 	for i := 0; i <= upToIndex && i < len(layers); i++ {
@@ -105,7 +150,16 @@ func BuildCumulativeServices(layers []*LayerConfig, upToIndex int) []string {
 	return svcs
 }
 
-// ParseConfigFlags 从参数中提取 -c/--config 和 -cp/--copy，返回配置目录和剩余参数
+// ParseConfigFlags 从命令行参数中提取配置相关标志
+//
+// 支持的标志:
+//   - -c/--config <路径>: 指定配置目录
+//   - -cp/--copy <路径>: 先复制配置到默认位置再使用
+//
+// @param defaultConfigDir 默认配置目录路径
+// @param args 原始命令行参数
+// @return configDir 解析得到的配置目录路径
+// @return remaining 剩余未解析的参数
 func ParseConfigFlags(defaultConfigDir string, args []string) (configDir string, remaining []string) {
 	configDir = defaultConfigDir
 	var copyFrom string
@@ -138,6 +192,12 @@ func ParseConfigFlags(defaultConfigDir string, args []string) (configDir string,
 }
 
 // CopyConfig 将源配置目录的内容复制到目标目录
+//
+// 复制 src/layers/ 目录下的所有文件和 src/inherit.list（如果存在）。
+//
+// @param src 源配置目录路径
+// @param dst 目标配置目录路径
+// @return error 源目录不存在、不是目录或复制失败时返回错误
 func CopyConfig(src, dst string) error {
 	fi, err := os.Stat(src)
 	if err != nil {

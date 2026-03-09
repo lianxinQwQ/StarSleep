@@ -1,3 +1,7 @@
+// i18n 包提供简单的国际化支持。
+//
+// 支持中文 (zh) 和英文 (en) 两种语言，默认根据系统环境变量
+// （LANG / LC_ALL / LANGUAGE）自动检测，也可通过 --lang 命令行参数手动指定。
 package i18n
 
 import (
@@ -6,9 +10,13 @@ import (
 	"strings"
 )
 
+// currentLang 当前语言编码，默认为中文
 var currentLang = "zh"
 
-// Init detects the system locale and sets the language
+// Init 检测系统语言环境变量并设置当前语言
+//
+// 优先级: LANGUAGE > LC_ALL > LANG。
+// 英语前缀设为 en，其他默认为 zh。
 func Init() {
 	lang := os.Getenv("LANG")
 	if l := os.Getenv("LC_ALL"); l != "" {
@@ -20,7 +28,9 @@ func Init() {
 	SetLang(lang)
 }
 
-// SetLang sets the current language
+// SetLang 设置当前语言
+//
+// @param lang 语言编码字符串（如 "en_US.UTF-8" 或 "zh"）
 func SetLang(lang string) {
 	lang = strings.ToLower(lang)
 	switch {
@@ -31,9 +41,14 @@ func SetLang(lang string) {
 	}
 }
 
-// T returns the translated string for the given key.
-// If args are provided, fmt.Sprintf is used with the translated template.
-// For fmt.Errorf with %w, call T without args and pass the result to fmt.Errorf.
+// T 根据 key 返回当前语言的翻译字符串
+//
+// 如果提供了 args 参数，将使用 fmt.Sprintf 格式化翻译模板。
+// 对于需要 fmt.Errorf + %w 的场景，应不传 args，将结果传给 fmt.Errorf。
+//
+// @param key 翻译键名
+// @param args 可选的格式化参数
+// @return 翻译后的字符串，键不存在时返回键名本身
 func T(key string, args ...any) string {
 	var m map[string]string
 	switch currentLang {
@@ -52,7 +67,13 @@ func T(key string, args ...any) string {
 	return msg
 }
 
-// ExtractGlobalFlags extracts --lang from args and returns the remaining args
+// ExtractGlobalFlags 从命令行参数中提取全局标志
+//
+// 目前支持的全局标志:
+//   - --lang <语言>: 设置界面语言（zh/en）
+//
+// @param args 原始命令行参数切片
+// @return 去除全局标志后的剩余参数
 func ExtractGlobalFlags(args []string) []string {
 	var remaining []string
 	for i := 0; i < len(args); i++ {

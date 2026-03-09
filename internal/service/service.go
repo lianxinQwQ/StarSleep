@@ -1,3 +1,8 @@
+// service 包提供 systemd 服务的声明式管理功能。
+//
+// 支持两种模式:
+//   - 构建模式 (SyncEnableService): 通过 systemctl --root 操作离线根目录
+//   - 维护模式 (EnableServiceLive): 通过 systemctl enable/disable --now 操作当前系统
 package service
 
 import (
@@ -12,11 +17,21 @@ import (
 	"starsleep/internal/util"
 )
 
-// SyncEnableService 使用 systemctl --root 启用 systemd 服务，并禁用不在累积列表中的服务
+// SyncEnableService 使用 systemctl --root 声明式地同步服务状态
+//
+// 先禁用不在累积列表中的已启用服务，再启用配置中指定的服务。
+// 通过解析服务单元文件的 Also=/Alias= 指令来避免误禁用隐式依赖。
+//
+// @param root 目标根目录路径
+// @param services 当前层要启用的服务列表
+// @param expectedSvcs 到当前层为止的累积服务列表
+// @throws 服务启用失败时调用 Fatal 退出
 func SyncEnableService(root string, services, expectedSvcs []string) {
+	// 合并累积服务和当前层服务，解析 Also=/Alias= 依赖
 	allConfigured := append(expectedSvcs, services...)
 	expectedSet := resolveServiceWithDeps(root, allConfigured)
 
+	// 禁用不在期望集合中的已启用服务
 	enabled := listEnabledServices("--root", root)
 	for _, svc := range enabled {
 		if !expectedSet[svc] {
@@ -40,7 +55,11 @@ func SyncEnableService(root string, services, expectedSvcs []string) {
 	fmt.Println(i18n.T("sync.enabled.count", len(services)))
 }
 
-// EnableServiceLive 在当前运行系统上同步服务（动态维护模式）
+// EnableServiceLive 在当前运行系统上声明式地同步服务状态
+//
+// 与 SyncEnableService 类似，但使用 --now 标志立即启动/停止服务。
+//
+// @param services 要启用的服务列表
 func EnableServiceLive(services []string) {
 	expectedSet := resolveServiceWithDeps("/", services)
 
@@ -61,6 +80,14 @@ func EnableServiceLive(services []string) {
 }
 
 // resolveServiceWithDeps 解析配置的服务及其 Also=/Alias= 隐式依赖
+//
+// 递归解析每个服务单元文件的 [Install] 段，
+// 提取 Also= 和 Alias= 指令中引用的服务名，
+// 返回完整的服务名集合（不包含 .service 后缀）。
+//
+// @param root 目标根目录路径
+// @param services 服务名切片
+// @return 完整的服务名集合
 func resolveServiceWithDeps(root string, services []string) map[string]bool {
 	result := make(map[string]bool)
 	var resolve func(string)
@@ -71,6 +98,7 @@ func resolveServiceWithDeps(root string, services []string) map[string]bool {
 		}
 		result[name] = true
 
+		// 在 /etc/systemd/system 和 /usr/lib/systemd/system 中查找单元文件
 		unitFile := name + ".service"
 		paths := []string{
 			filepath.Join(root, "etc/systemd/system", unitFile),
@@ -95,6 +123,7 @@ func resolveServiceWithDeps(root string, services []string) map[string]bool {
 				if !inInstall {
 					continue
 				}
+				// 解析 [Install] 段中的 Also= 和 Alias= 指令
 				if strings.HasPrefix(line, "Also=") {
 					for _, dep := range strings.Fields(strings.TrimPrefix(line, "Also=")) {
 						resolve(dep)
@@ -116,6 +145,12 @@ func resolveServiceWithDeps(root string, services []string) map[string]bool {
 }
 
 // listEnabledServices 列出当前已启用的 systemd 服务单元名称
+//
+// 调用 systemctl list-unit-files --state=enabled 获取已启用服务列表。
+// 返回的服务名不包含 .service 后缀。
+//
+// @param args 额外的 systemctl 参数（如 "--root", "/path"）
+// @return 已启用的服务名切片
 func listEnabledServices(args ...string) []string {
 	cmdArgs := append(args, "list-unit-files", "--state=enabled", "--type=service", "--no-legend", "--no-pager")
 	cmd := exec.Command("systemctl", cmdArgs...)
