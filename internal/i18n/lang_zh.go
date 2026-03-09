@@ -118,6 +118,7 @@ flatten 选项:
 	"deploy.removed.entry":   "[Deploy] 已移除引导条目: %s",
 	"deploy.entry.not.exist": "[Deploy] 引导条目不存在: %s",
 	"deploy.removed.boot":    "[Deploy] 已移除启动文件: %s",
+	"root.uuid.not.found":   "无法获取根分区 UUID，请确认 findmnt/blkid 可用",
 	"read.file.failed":       "读取 %s 失败: %v",
 	"write.file.failed":      "写入 %s 失败: %v",
 

@@ -28,8 +28,6 @@ const (
 	subvolPrefix = "starsleep/snapshots"
 	// entryTitle 引导条目标题
 	entryTitle = "StarSleep"
-	// rootLabel 根分区卷标
-	rootLabel = "arkane_root"
 	// kernelOpts 内核启动参数
 	kernelOpts = "lsm=landlock,lockdown,yama,integrity,apparmor,bpf quiet splash loglevel=3 systemd.show_status=auto rd.udev.log_level=3 rw"
 )
@@ -153,15 +151,16 @@ func deploySnapshot(target, snapName string) {
 	confPath := filepath.Join(entryDir, confName)
 
 	os.MkdirAll(entryDir, 0o755)
+	rootUUID := detectRootUUID()
 	entry := fmt.Sprintf(`title %s - %s
 linux /starsleep/%s/vmlinuz
 %s
-options root="LABEL=%s" rootflags=subvol=/%s/%s %s
+options root="UUID=%s" rootflags=subvol=/%s/%s %s
 `,
 		entryTitle, snapName,
 		snapName,
 		strings.Join(initrdLines, "\n"),
-		rootLabel, subvolPrefix, snapName, kernelOpts)
+		rootUUID, subvolPrefix, snapName, kernelOpts)
 
 	if err := os.WriteFile(confPath, []byte(entry), 0o644); err != nil {
 		util.Fatal(i18n.T("write.entry.failed", err))
@@ -248,4 +247,24 @@ func copyFile(src, dst string) {
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
 		util.Fatal(i18n.T("write.file.failed", dst, err))
 	}
+}
+
+// detectRootUUID 获取当前 / 根挂载对应块设备 UUID。
+//
+// 优先使用 findmnt 的 UUID 列；若为空则回退到 SOURCE + blkid 查询。
+func detectRootUUID() string {
+	if uuid, err := util.RunSilent("findmnt", "-n", "-o", "UUID", "/"); err == nil && uuid != "" {
+		return uuid
+	}
+
+	source, err := util.RunSilent("findmnt", "-n", "-o", "SOURCE", "/")
+	if err == nil && source != "" {
+		uuid, blkidErr := util.RunSilent("blkid", "-s", "UUID", "-o", "value", source)
+		if blkidErr == nil && uuid != "" {
+			return uuid
+		}
+	}
+
+	util.Fatal(i18n.T("root.uuid.not.found"))
+	return ""
 }

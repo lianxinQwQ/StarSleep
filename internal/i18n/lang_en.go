@@ -118,6 +118,7 @@ flatten options:
 	"deploy.removed.entry":   "[Deploy] Removed boot entry: %s",
 	"deploy.entry.not.exist": "[Deploy] Boot entry does not exist: %s",
 	"deploy.removed.boot":    "[Deploy] Removed boot files: %s",
+	"root.uuid.not.found":   "Cannot resolve root partition UUID, please ensure findmnt/blkid are available",
 	"read.file.failed":       "Failed to read %s: %v",
 	"write.file.failed":      "Failed to write %s: %v",
 
