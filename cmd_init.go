@@ -62,17 +62,29 @@ func cmdInit(args []string) {
 
 	// ── 创建工作目录结构 ──
 	dirs := []string{
-		filepath.Join(workDir, "layers"),              // 各层 diff 数据
-		filepath.Join(workDir, "snapshots"),           // 生产快照
-		filepath.Join(workDir, "shared/home"),         // 用户家目录持久化
-		filepath.Join(workDir, "shared/pacman-cache"), // pacman 包缓存共享
-		filepath.Join(workDir, "config/layers"),       // 层定义 YAML
-		filepath.Join(workDir, "work/merged"),         // OverlayFS 合并挂载点
-		filepath.Join(workDir, "work/ovl_work"),       // OverlayFS 工作目录
-		filepath.Join(workDir, "logs"),                // 构建日志
+		filepath.Join(workDir, "layers"),        // 各层 diff 数据
+		filepath.Join(workDir, "snapshots"),     // 生产快照
+		filepath.Join(workDir, "shared"),        // 共享数据根目录
+		filepath.Join(workDir, "config/layers"), // 层定义 YAML
+		filepath.Join(workDir, "work/merged"),   // OverlayFS 合并挂载点
+		filepath.Join(workDir, "work/ovl_work"), // OverlayFS 工作目录
+		filepath.Join(workDir, "logs"),          // 构建日志
 	}
 	for _, d := range dirs {
 		os.MkdirAll(d, 0o755)
+	}
+
+	// 共享缓存目录创建为 Btrfs 子卷（不存在时）
+	for _, subvol := range []string{
+		filepath.Join(workDir, "shared/pacman-cache"),
+		filepath.Join(workDir, "shared/paru-cache"),
+	} {
+		if _, err := os.Stat(subvol); err == nil {
+			continue
+		}
+		if err := util.Run("btrfs", "subvolume", "create", subvol); err != nil {
+			util.Fatal(i18n.T("create.subvol.failed", subvol, err))
+		}
 	}
 
 	// 如果指定了外部配置目录，复制到默认位置

@@ -118,7 +118,8 @@ flatten options:
 	"deploy.removed.entry":   "[Deploy] Removed boot entry: %s",
 	"deploy.entry.not.exist": "[Deploy] Boot entry does not exist: %s",
 	"deploy.removed.boot":    "[Deploy] Removed boot files: %s",
-	"root.uuid.not.found":   "Cannot resolve root partition UUID, please ensure findmnt/blkid are available",
+	"root.uuid.not.found":    "Cannot resolve root partition UUID, please ensure findmnt/blkid are available",
+	"create.subvol.failed":   "Failed to create Btrfs subvolume: %s: %v",
 	"read.file.failed":       "Failed to read %s: %v",
 	"write.file.failed":      "Failed to write %s: %v",
 
