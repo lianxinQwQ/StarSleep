@@ -158,6 +158,7 @@ flatten 选项:
 	"maintain.official.pkgs":  "[Maintain] 官方仓库包: %d 个",
 	"maintain.aur.pkgs":       "[Maintain] AUR 包: %d 个",
 	"maintain.services.count": "[Maintain] 服务: %d 个",
+	"maintain.pre.snapshot":   "[Maintain] 预备: 创建维护前备份快照: %s",
 	"maintain.step1":          "[Maintain] 步骤 1/5: 清理多余软件包...",
 	"maintain.step2":          "[Maintain] 步骤 2/5: 同步官方仓库软件包...",
 	"maintain.step2.skip":     "[Maintain] 步骤 2/5: 无官方仓库包需要安装",

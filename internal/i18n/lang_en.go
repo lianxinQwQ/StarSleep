@@ -158,6 +158,7 @@ flatten options:
 	"maintain.official.pkgs":  "[Maintain] Official repo packages: %d",
 	"maintain.aur.pkgs":       "[Maintain] AUR packages: %d",
 	"maintain.services.count": "[Maintain] Services: %d",
+	"maintain.pre.snapshot":   "[Maintain] Prep: creating pre-maintain backup snapshot: %s",
 	"maintain.step1":          "[Maintain] Step 1/5: Cleaning up extra packages...",
 	"maintain.step2":          "[Maintain] Step 2/5: Syncing official repo packages...",
 	"maintain.step2.skip":     "[Maintain] Step 2/5: No official packages to install",

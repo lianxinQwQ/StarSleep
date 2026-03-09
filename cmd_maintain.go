@@ -4,11 +4,12 @@
 //
 // 与 build 命令不同，maintain 不使用 OverlayFS 分层构建，
 // 而是将所有层的包/服务汇总后直接在当前系统上执行:
+//  0. 先创建维护前备份快照
 //  1. 清理多余软件包（降级为依赖 + 清理孤立包）
 //  2. 安装官方仓库包
 //  3. 安装 AUR 包
 //  4. 启用 systemd 服务
-//  5. 创建快照并部署引导条目
+//  5. 创建维护后快照并部署引导条目
 package main
 
 import (
@@ -74,6 +75,16 @@ func cmdMaintain(args []string) {
 
 	root := "/"
 	dbPath := filepath.Join(root, "var/lib/pacman")
+	currentSnap := detectCurrentSnapshot()
+	ts := util.Timestamp()
+
+	// 预备步骤：先保存当前系统状态，确保热更新前可回退
+	preSnapName := currentSnap + "-before-maintain-" + ts
+	preSnapshotDir := filepath.Join(defaultWorkDir, "snapshots", preSnapName)
+	fmt.Println(i18n.T("maintain.pre.snapshot", preSnapName))
+	if err := util.Run("btrfs", "subvolume", "snapshot", "/", preSnapshotDir); err != nil {
+		util.Fatal(i18n.T("snapshot.failed", err))
+	}
 
 	// 1. 清理
 	fmt.Println(i18n.T("maintain.step1"))
@@ -117,9 +128,7 @@ func cmdMaintain(args []string) {
 
 	// 5. 创建快照并部署引导
 	fmt.Println(i18n.T("maintain.step5"))
-	// 从 /proc/cmdline 解析当前启动的快照名称，在其基础上生成新快照名
-	currentSnap := detectCurrentSnapshot()
-	newSnapName := currentSnap + "-" + util.Timestamp()
+	newSnapName := currentSnap + "-" + ts
 	snapshotDir := filepath.Join(defaultWorkDir, "snapshots", newSnapName)
 
 	// 创建当前系统根的 Btrfs 快照
