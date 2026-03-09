@@ -26,6 +26,7 @@ const (
 //
 // 支持的子命令:
 //   - build:    分层构建系统快照
+//   - compare:  对比当前系统与配置差异
 //   - flatten:  部署快照到引导分区
 //   - init:     初始化工作环境
 //   - maintain: 动态维护模式（直接操作当前系统）
@@ -48,6 +49,8 @@ func main() {
 	switch cmd {
 	case "build":
 		cmdBuild(cmdArgs)
+	case "compare":
+		cmdCompare(cmdArgs)
 	case "flatten":
 		cmdFlatten(cmdArgs)
 	case "init":

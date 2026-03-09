@@ -57,6 +57,31 @@ func ListExplicitPkgs(root string) ([]string, error) {
 	return pkgs, nil
 }
 
+// ListInstalledPkgs 列出目标根文件系统中所有已安装包名（包含显式包和依赖包）
+//
+// 通过 ALPM 本地数据库遍历所有包并返回名称列表。
+// 用于需要“已安装集合”口径的对比场景。
+//
+// @param root 目标根目录路径
+// @return 已安装包名切片和可能的错误
+func ListInstalledPkgs(root string) ([]string, error) {
+	h, err := openHandle(root)
+	if err != nil {
+		return nil, err
+	}
+	defer h.Release()
+	localDB, err := h.LocalDB()
+	if err != nil {
+		return nil, fmt.Errorf(i18n.T("alpm.localdb"), err)
+	}
+	var pkgs []string
+	localDB.PkgCache().ForEach(func(pkg alpm.IPackage) error {
+		pkgs = append(pkgs, pkg.Name())
+		return nil
+	})
+	return pkgs, nil
+}
+
 // ListOrphans 列出目标根文件系统中的孤立依赖包
 //
 // 调用 pacman -Qtdq 查找不被任何其他包依赖且非显式安装的包。
@@ -107,4 +132,32 @@ func ExpandPkgGroups(pkgs []string) map[string]bool {
 		}
 	}
 	return result
+}
+
+// ResolveGroupMembers 解析指定包名中哪些是包组，并返回组→成员映射
+//
+// 通过 pacman -Sg 查询每个名称是否为包组，
+// 如果是，则返回组名到其成员包名列表的映射。
+// 不属于任何组的包名不会出现在结果中。
+//
+// @param names 待检查的包名/组名列表
+// @return 包组名→成员包名切片的映射
+func ResolveGroupMembers(names []string) map[string][]string {
+	groups := make(map[string][]string)
+	if len(names) == 0 {
+		return groups
+	}
+	args := append([]string{"-Sg", "--"}, names...)
+	output, _ := util.RunSilent("pacman", args...)
+	if output == "" {
+		return groups
+	}
+	// pacman -Sg 输出格式: "组名 包名"
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 {
+			groups[fields[0]] = append(groups[fields[0]], fields[1])
+		}
+	}
+	return groups
 }

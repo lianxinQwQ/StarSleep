@@ -12,6 +12,7 @@ var zhMessages = map[string]string{
 
 命令:
   build     分层构建系统快照
+  compare   对比当前系统与配置差异
   flatten   部署快照到引导
   init      初始化工作环境
   maintain  动态维护模式（直接操作当前系统）
@@ -29,6 +30,11 @@ build 选项:
 verify 选项:
   --flat <展平目录>     展平子卷路径
   --layers <层1> [层2...]  层目录列表
+
+compare 选项:
+  --packages             对比主动安装的软件包列表 (不实际构建)
+  --files <目标目录>     基于最新快照与指定目录对比文件差异
+  -v, --verbose          详细输出 (显示包组状态、无差异提示等)
 
 flatten 选项:
   --list              列出已部署的引导条目
@@ -241,4 +247,44 @@ flatten 选项:
 	"ovl.copy":       "复制 %s -> %s: %w",
 	"ovl.readlink":   "readlink %s: %w",
 	"ovl.mknod":      "mknod %s: %w",
+
+	// ── compare.go ──
+	"compare.unknown.arg":         "compare: 未知参数: %s",
+	"compare.usage":               "用法: starsleep compare --packages [-v] [-c <配置目录>]\n       starsleep compare --files <目标目录> [-v] [-c <配置目录>]",
+	"compare.files.need.dir":      "--files 需要指定目标目录",
+	"compare.separator":           "[Compare] ═══════════════════════════════════════════════",
+	"compare.config.dir":          "[Compare] 配置目录: %s",
+	"compare.pkg.title":           "[Compare] 软件包列表对比模式",
+	"compare.pkg.expected":        "[Compare] 配置期望包数 (展开组后): %d",
+	"compare.pkg.installed":       "[Compare] 系统主动安装包数: %d",
+	"compare.pkg.all.installed":   "[Compare] 系统全量已安装包数: %d",
+	"compare.query.failed":        "[Compare] 查询包列表失败: %v",
+	"compare.pkg.groups.header":   "[Compare] 包组状态 (%d 个):",
+	"compare.pkg.groups.item":     "[Compare]   ■ %s",
+	"compare.pkg.missing.header":  "[Compare] 缺失包 (配置中有但系统未安装): %d 个",
+	"compare.pkg.missing.item":    "[Compare]   - %s",
+	"compare.pkg.no.missing":      "[Compare] ✓ 无缺失包",
+	"compare.pkg.asdeps.header":   "[Compare] 依赖安装包 (存在但非主动安装): %d 个",
+	"compare.pkg.asdeps.item":     "[Compare]   ~ %s",
+	"compare.pkg.no.asdeps":       "[Compare] ✓ 无依赖安装包",
+	"compare.pkg.extra.header":    "[Compare] 多余包 (系统主动安装但配置中未定义): %d 个",
+	"compare.pkg.extra.item":      "[Compare]   + %s",
+	"compare.pkg.no.extra":        "[Compare] ✓ 无多余包",
+	"compare.pkg.match":           "[Compare] ✓ 软件包列表完全匹配",
+	"compare.pkg.diff":            "[Compare] ✗ 共 %d 处差异 (缺失: %d, 多余: %d)",
+	"compare.pkg.diff.verbose":    "[Compare] ✗ 共 %d 处差异 (缺失: %d, 依赖安装: %d, 多余: %d)",
+	"compare.file.title":            "[Compare] 文件对比模式 (基于最新快照)",
+	"compare.file.target":           "[Compare] 对比目标: %s",
+	"compare.file.snapshot":         "[Compare] 基准快照: %s",
+	"compare.file.creating.snap":    "[Compare] 创建临时快照: %s",
+	"compare.file.applying.inherit": "[Compare] 应用继承列表...",
+	"compare.file.comparing":        "[Compare] 使用 rsync 对比: %s ↔ %s",
+	"compare.file.match":            "[Compare] ✓ 文件完全一致",
+	"compare.file.diff.count":       "[Compare] ✗ 发现 %d 处文件差异:",
+	"compare.file.diff.truncated":   "[Compare]   ... 更多差异被截断 (共 %d 处)",
+	"compare.no.snapshot":           "未找到最新快照 (latest)，请先执行 build: %v",
+	"compare.rsync.failed":          "[Compare] rsync 对比命令执行失败: %v",
+	"compare.cleanup.done":          "[Compare] 临时快照已清理",
+	"compare.target.not.dir":        "对比目标不是目录: %s",
+	"compare.src.not.dir":           "快照中不存在对应目录: %s",
 }

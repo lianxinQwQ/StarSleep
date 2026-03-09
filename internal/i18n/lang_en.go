@@ -12,6 +12,7 @@ Usage:
 
 Commands:
   build     Build system snapshot in layers
+  compare   Compare current system against config
   flatten   Deploy snapshot to boot
   init      Initialize work environment
   maintain  Dynamic maintenance mode (operate on running system)
@@ -29,6 +30,11 @@ build options:
 verify options:
   --flat <flat-dir>         Flat subvolume path
   --layers <l1> [l2...]     Layer directory list
+
+compare options:
+  --packages             Compare explicitly installed package lists (no build)
+  --files <target-dir>   Compare files between latest snapshot and target directory
+  -v, --verbose          Verbose output (show group status, no-diff hints, etc.)
 
 flatten options:
   --list              List deployed boot entries
@@ -241,4 +247,43 @@ flatten options:
 	"ovl.copy":       "copying %s -> %s: %w",
 	"ovl.readlink":   "readlink %s: %w",
 	"ovl.mknod":      "mknod %s: %w",
-}
+
+	// ── compare.go ──
+	"compare.unknown.arg":         "compare: unknown argument: %s",
+	"compare.usage":               "Usage: starsleep compare --packages [-v] [-c <config-dir>]\n       starsleep compare --files <target-dir> [-v] [-c <config-dir>]",
+	"compare.files.need.dir":      "--files requires a target directory",
+	"compare.separator":           "[Compare] ═══════════════════════════════════════════════",
+	"compare.config.dir":          "[Compare] Config dir: %s",
+	"compare.pkg.title":           "[Compare] Package List Comparison Mode",
+	"compare.pkg.expected":        "[Compare] Expected packages from config (groups expanded): %d",
+	"compare.pkg.installed":       "[Compare] Explicitly installed packages: %d",
+	"compare.pkg.all.installed":   "[Compare] Total installed packages: %d",
+	"compare.query.failed":        "[Compare] Failed to query package list: %v",
+	"compare.pkg.groups.header":   "[Compare] Package group status (%d groups):",
+	"compare.pkg.groups.item":     "[Compare]   ■ %s",
+	"compare.pkg.missing.header":  "[Compare] Missing packages (in config but not installed): %d",
+	"compare.pkg.missing.item":    "[Compare]   - %s",
+	"compare.pkg.no.missing":      "[Compare] ✓ No missing packages",
+	"compare.pkg.asdeps.header":   "[Compare] Dep-installed packages (present but not explicit): %d",
+	"compare.pkg.asdeps.item":     "[Compare]   ~ %s",
+	"compare.pkg.no.asdeps":       "[Compare] ✓ No dep-installed packages",
+	"compare.pkg.extra.header":    "[Compare] Extra packages (explicitly installed but not in config): %d",
+	"compare.pkg.extra.item":      "[Compare]   + %s",
+	"compare.pkg.no.extra":        "[Compare] ✓ No extra packages",
+	"compare.pkg.match":           "[Compare] ✓ Package lists match perfectly",
+	"compare.pkg.diff":            "[Compare] ✗ %d differences found (missing: %d, extra: %d)",
+	"compare.pkg.diff.verbose":    "[Compare] ✗ %d differences found (missing: %d, dep-installed: %d, extra: %d)",
+	"compare.file.title":            "[Compare] File Comparison Mode (based on latest snapshot)",
+	"compare.file.target":           "[Compare] Comparison target: %s",
+	"compare.file.snapshot":         "[Compare] Base snapshot: %s",
+	"compare.file.creating.snap":    "[Compare] Creating temporary snapshot: %s",
+	"compare.file.applying.inherit": "[Compare] Applying inherit list...",
+	"compare.file.comparing":        "[Compare] Comparing with rsync: %s ↔ %s",
+	"compare.file.match":            "[Compare] ✓ Files are identical",
+	"compare.file.diff.count":       "[Compare] ✗ Found %d file differences:",
+	"compare.file.diff.truncated":   "[Compare]   ... more diffs truncated (total %d)",
+	"compare.no.snapshot":           "Latest snapshot not found, please run build first: %v",
+	"compare.rsync.failed":          "[Compare] rsync comparison command failed: %v",
+	"compare.cleanup.done":          "[Compare] Temporary snapshot cleaned up",
+	"compare.target.not.dir":        "Comparison target is not a directory: %s",
+	"compare.src.not.dir":           "Corresponding directory not found in snapshot: %s",}
