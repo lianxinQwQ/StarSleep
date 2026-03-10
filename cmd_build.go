@@ -165,8 +165,12 @@ func cmdBuild(args []string) {
 		os.MkdirAll(cacheDst, 0o755)
 		syscall.Mount(cacheSrc, cacheDst, "", syscall.MS_BIND, "")
 
-		// 绑定挂载虚拟文件系统（pacstrap 会自行挂载，跳过）
-		if cfg.Helper != "pacstrap" {
+		// 绑定挂载虚拟文件系统
+		// pacstrap / arch-chroot 会自行管理 VFS 挂载，跳过
+		switch cfg.Helper {
+		case "pacstrap", "chroot-cmd", "chroot-pacman":
+			// 这些工具内部管理 /proc /sys /dev 挂载
+		default:
 			bindVFS(merged)
 		}
 
@@ -276,9 +280,10 @@ func bindVFS(root string) {
 //
 // 从 /proc/mounts 读取当前挂载信息，找到所有以 path 为前缀的挂载点，
 // 按路径深度倒序逐一卸载，确保子挂载点先于父挂载点卸载。
+// 若常规卸载失败，对该挂载点使用延迟卸载（MNT_DETACH）兜底。
 //
 // @param path 要卸载的根路径
-// @return error 卸载过程中的错误（仅在无法读取 /proc/mounts 时回退到普通卸载）
+// @return error 若仍有挂载点残留则返回错误
 func unmountRecursive(path string) error {
 	data, err := os.ReadFile("/proc/mounts")
 	if err != nil {
@@ -296,10 +301,19 @@ func unmountRecursive(path string) error {
 		}
 	}
 
+	// 从最深的子挂载开始逐一卸载
+	var lastErr error
 	for i := len(mountpoints) - 1; i >= 0; i-- {
-		syscall.Unmount(mountpoints[i], 0)
+		mp := mountpoints[i]
+		if err := syscall.Unmount(mp, 0); err != nil {
+			// 常规卸载失败，使用延迟卸载兜底
+			util.LogMsg(i18n.T("unmount.lazy.fallback"), mp)
+			if err2 := syscall.Unmount(mp, syscall.MNT_DETACH); err2 != nil {
+				lastErr = err2
+			}
+		}
 	}
-	return nil
+	return lastErr
 }
 
 // hasPathPrefix 判断 path 是否以 prefix 为路径前缀（确保以 '/' 分隔）

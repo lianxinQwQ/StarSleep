@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"starsleep/internal/chroot"
 	"starsleep/internal/config"
 	"starsleep/internal/copyfiles"
 	"starsleep/internal/i18n"
@@ -44,11 +45,20 @@ func cmdMaintain(args []string) {
 	}
 
 	// ── 汇总所有层的包和服务 ──
-	// 根据 helper 类型分类到官方包、AUR 包、服务三个列表
+	// 根据 helper 类型分类到官方包、AUR 包、服务等列表
 	var officialPkgs []string
 	var aurPkgs []string
 	var services []string
 	var copyFileMappings []config.FileMapping
+
+	// chrootLayers 保存需要按原始顺序执行的 chroot 层
+	type chrootLayer struct {
+		helper   string
+		env      []config.EnvVar
+		commands []string
+		packages []string
+	}
+	var chrootLayers []chrootLayer
 
 	for _, cfg := range layers {
 		switch cfg.Helper {
@@ -60,6 +70,14 @@ func cmdMaintain(args []string) {
 			services = append(services, cfg.Services...)
 		case "copy_files":
 			copyFileMappings = append(copyFileMappings, cfg.Files...)
+		case "chroot-cmd":
+			chrootLayers = append(chrootLayers, chrootLayer{
+				helper: cfg.Helper, env: cfg.Env, commands: cfg.Commands,
+			})
+		case "chroot-pacman":
+			chrootLayers = append(chrootLayers, chrootLayer{
+				helper: cfg.Helper, env: cfg.Env, packages: cfg.Packages,
+			})
 		}
 	}
 
@@ -136,6 +154,21 @@ func cmdMaintain(args []string) {
 		copyfiles.CopyFilesLive(configDir, copyFileMappings)
 	} else {
 		fmt.Println(i18n.T("maintain.step.copyfiles.skip"))
+	}
+
+	// 4.6. 执行 chroot 层（按配置顺序逐个执行）
+	if len(chrootLayers) > 0 {
+		fmt.Println(i18n.T("maintain.step.chroot"))
+		for _, cl := range chrootLayers {
+			switch cl.helper {
+			case "chroot-cmd":
+				chroot.ChrootCmdLive(cl.env, cl.commands)
+			case "chroot-pacman":
+				chroot.ChrootPacmanLive(cl.env, cl.packages)
+			}
+		}
+	} else {
+		fmt.Println(i18n.T("maintain.step.chroot.skip"))
 	}
 
 	// 5. 创建快照并部署引导

@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 
+	"starsleep/internal/chroot"
 	"starsleep/internal/config"
 	"starsleep/internal/copyfiles"
 	"starsleep/internal/i18n"
@@ -23,6 +24,8 @@ import (
 //   - paru: 使用 paru 安装 AUR 包
 //   - enable_service: 启用 systemd 服务
 //   - copy_files: 将配置目录中的文件叠加到目标系统
+//   - chroot-cmd: 通过 arch-chroot 在目标根中执行任意命令
+//   - chroot-pacman: 通过 arch-chroot 在目标根中运行 pacman
 //
 // @param root 目标根目录路径
 // @param configDir 配置目录路径（copy_files 需要定位 files/ 子目录）
@@ -44,6 +47,10 @@ func syncLayer(root, configDir string, cfg *config.LayerConfig, expectedPkgs, ex
 		service.SyncEnableService(root, cfg.Services, expectedSvcs)
 	case "copy_files":
 		copyfiles.SyncCopyFiles(root, configDir, cfg.Files)
+	case "chroot-cmd":
+		chroot.SyncChrootCmd(root, cfg.Env, cfg.Commands)
+	case "chroot-pacman":
+		chroot.SyncChrootPacman(root, cfg.Env, cfg.Packages)
 	default:
 		util.Fatal(i18n.T("sync.unknown.tool", cfg.Helper))
 	}
@@ -63,12 +70,14 @@ func printSyncHeader(cfg *config.LayerConfig, root string) {
 	fmt.Println(i18n.T("sync.tool", cfg.Helper))
 	fmt.Println(i18n.T("sync.target", root))
 	switch cfg.Helper {
-	case "pacstrap", "pacman", "paru":
+	case "pacstrap", "pacman", "paru", "chroot-pacman":
 		fmt.Println(i18n.T("sync.packages", len(cfg.Packages)))
 	case "enable_service":
 		fmt.Println(i18n.T("sync.services", len(cfg.Services)))
 	case "copy_files":
 		fmt.Println(i18n.T("sync.files", len(cfg.Files)))
+	case "chroot-cmd":
+		fmt.Println(i18n.T("sync.commands", len(cfg.Commands)))
 	}
 	fmt.Println(i18n.T("sync.separator"))
 }

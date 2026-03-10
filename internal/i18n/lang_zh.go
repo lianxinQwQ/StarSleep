@@ -79,6 +79,7 @@ flatten 选项:
 	"build.layer":           ">>> 构建层: %s (%s)",
 	"mount.overlay.failed":  "挂载 OverlayFS 失败: %v",
 	"unmount.fallback":      "警告: 常规卸载失败，使用延迟卸载...",
+	"unmount.lazy.fallback": "警告: %s 常规卸载失败，尝试延迟卸载...",
 	"layer.sync.restore":    "层 %s 同步失败，从备份恢复上次成功状态",
 	"layer.build.failed":    "层 %s 构建失败",
 	"flatten.layer":         "[Flatten] 展平层 %s ...",
@@ -208,6 +209,22 @@ flatten 选项:
 	// ── maintain copy_files ──
 	"maintain.step.copyfiles":      "[Maintain] 步骤 4.5/5: 叠加配置文件...",
 	"maintain.step.copyfiles.skip": "[Maintain] 步骤 4.5/5: 无文件需要叠加",
+
+	// ── chroot ──
+	"chroot.cmd.start":          "[Chroot] 开始执行 chroot 命令...",
+	"chroot.cmd.exec":           "[Chroot] 执行: %s",
+	"chroot.cmd.failed":         "chroot 命令执行失败: %s: %v",
+	"chroot.cmd.done":           "[Chroot] ✓ 完成，共执行 %d 条命令",
+	"chroot.pacman.start":       "[Chroot] 通过 arch-chroot 运行 pacman...",
+	"chroot.pacman.failed":      "chroot pacman 安装失败: %v",
+	"chroot.pacman.done":        "[Chroot] ✓ 完成，共安装 %d 个包",
+	"chroot.env.set":            "[Chroot] 环境变量: %s=%s",
+	"chroot.env.host":           "[Chroot] 环境变量: %s ← 主机 $%s",
+	"sync.commands":             "[Sync] 命令: %d 条",
+
+	// ── maintain chroot ──
+	"maintain.step.chroot":      "[Maintain] 步骤 4.6/5: 执行 chroot 命令...",
+	"maintain.step.chroot.skip": "[Maintain] 步骤 4.6/5: 无 chroot 命令需要执行",
 
 	// ── enable_service.go ──
 	"sync.disable.extra":      "[Sync] 禁用多余服务: %s",

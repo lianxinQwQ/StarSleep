@@ -36,22 +36,39 @@ type FileMapping struct {
 	Dst string `yaml:"dst"`
 }
 
+// EnvVar 表示一个环境变量设定
+//
+// 支持两种赋值方式:
+//   - Value 非空: 使用固定值（如 LANG=zh_CN.UTF-8）
+//   - HostKey 非空: 从当前主机读取指定环境变量的值
+//
+// 二者同时设置时 Value 优先。
+type EnvVar struct {
+	Key     string `yaml:"key"`
+	Value   string `yaml:"value,omitempty"`
+	HostKey string `yaml:"host_key,omitempty"`
+}
+
 // LayerConfig 表示一个配置层的 YAML 结构
 //
-// 每个层定义了名称、使用的工具（helper）、待安装的包列表、待启用的服务列表
-// 和待叠加的文件映射列表。
+// 每个层定义了名称、使用的工具（helper）、环境变量、待安装的包列表、
+// 待启用的服务列表、待叠加的文件映射列表和待执行的命令列表。
 // helper 类型决定了如何处理该层:
 //   - pacstrap: 使用 pacstrap 初始化基础系统
 //   - pacman: 使用 pacman 同步官方仓库包
 //   - paru: 使用 paru 安装 AUR 包
 //   - enable_service: 启用 systemd 服务
 //   - copy_files: 将配置目录中的文件叠加到目标系统
+//   - chroot-cmd: 通过 arch-chroot 在目标根中执行任意命令
+//   - chroot-pacman: 通过 arch-chroot 在目标根中运行 pacman 安装包
 type LayerConfig struct {
 	Name     string        `yaml:"name"`
 	Helper   string        `yaml:"helper"`
+	Env      []EnvVar      `yaml:"env,omitempty"`
 	Packages []string      `yaml:"packages"`
 	Services []string      `yaml:"services"`
 	Files    []FileMapping `yaml:"files"`
+	Commands []string      `yaml:"commands,omitempty"`
 }
 
 // loadLayerConfig 从 YAML 文件加载单个层配置
@@ -131,6 +148,32 @@ func LoadInheritList(configDir string) ([]string, error) {
 		paths = append(paths, line)
 	}
 	return paths, scanner.Err()
+}
+
+// ResolveEnv 将配置中的环境变量列表解析为 KEY=VALUE 字符串切片
+//
+// 对于每个 EnvVar:
+//   - 如果设置了 Value，直接使用该固定值
+//   - 如果设置了 HostKey，从当前主机的环境变量中读取对应值
+//   - 二者同时设置时 Value 优先
+//   - HostKey 指定的环境变量在主机上不存在时跳过该条目
+//
+// @param envVars 环境变量配置列表
+// @return 解析后的 KEY=VALUE 字符串切片
+func ResolveEnv(envVars []EnvVar) []string {
+	var result []string
+	for _, ev := range envVars {
+		if ev.Value != "" {
+			result = append(result, ev.Key+"="+ev.Value)
+			continue
+		}
+		if ev.HostKey != "" {
+			if val, ok := os.LookupEnv(ev.HostKey); ok {
+				result = append(result, ev.Key+"="+val)
+			}
+		}
+	}
+	return result
 }
 
 // BuildCumulativePkgs 构建到指定层为止的累积包列表

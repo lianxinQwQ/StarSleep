@@ -79,6 +79,7 @@ flatten options:
 	"build.layer":           ">>> Building layer: %s (%s)",
 	"mount.overlay.failed":  "Failed to mount OverlayFS: %v",
 	"unmount.fallback":      "Warning: normal unmount failed, using lazy unmount...",
+	"unmount.lazy.fallback": "Warning: %s normal unmount failed, trying lazy unmount...",
 	"layer.sync.restore":    "Layer %s sync failed, restoring from backup",
 	"layer.build.failed":    "Layer %s build failed",
 	"flatten.layer":         "[Flatten] Flattening layer %s ...",
@@ -208,6 +209,22 @@ flatten options:
 	// ── maintain copy_files ──
 	"maintain.step.copyfiles":      "[Maintain] Step 4.5/5: Overlaying config files...",
 	"maintain.step.copyfiles.skip": "[Maintain] Step 4.5/5: No files to overlay",
+
+	// ── chroot ──
+	"chroot.cmd.start":          "[Chroot] Starting chroot command execution...",
+	"chroot.cmd.exec":           "[Chroot] Exec: %s",
+	"chroot.cmd.failed":         "chroot command failed: %s: %v",
+	"chroot.cmd.done":           "[Chroot] ✓ Done, %d commands executed",
+	"chroot.pacman.start":       "[Chroot] Running pacman via arch-chroot...",
+	"chroot.pacman.failed":      "chroot pacman installation failed: %v",
+	"chroot.pacman.done":        "[Chroot] ✓ Done, %d packages installed",
+	"chroot.env.set":            "[Chroot] Env: %s=%s",
+	"chroot.env.host":           "[Chroot] Env: %s ← host $%s",
+	"sync.commands":             "[Sync] Commands: %d",
+
+	// ── maintain chroot ──
+	"maintain.step.chroot":      "[Maintain] Step 4.6/5: Executing chroot commands...",
+	"maintain.step.chroot.skip": "[Maintain] Step 4.6/5: No chroot commands to execute",
 
 	// ── enable_service.go ──
 	"sync.disable.extra":      "[Sync] Disabling extra service: %s",

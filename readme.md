@@ -12,7 +12,7 @@ StarSleep 通过 YAML 配置文件定义系统的分层结构，使用 OverlayFS
 ## 特性
 
 - **声明式配置** — 通过 YAML 文件定义软件包、服务和层级顺序，构建结果可复现
-- **分层构建** — 支持 `pacstrap`、`pacman`、`paru`、`enable_service` 四种 helper，按层叠加
+- **分层构建** — 支持 `pacstrap`、`pacman`、`paru`、`enable_service`、`copy_files`、`chroot-cmd`、`chroot-pacman` 七种 helper，按层叠加
 - **OverlayFS + Btrfs reflink** — 每层的 diff 持久存储在独立目录，展平合并时利用 reflink 实现零拷贝，低磁盘磨损
 - **不可变快照** — 构建产物为 Btrfs 只读快照，支持回滚
 - **systemd-boot 集成** — `flatten` 命令自动将内核和 initramfs 部署到 ESP 并生成引导条目
@@ -73,6 +73,7 @@ sudo starsleep init
 │   └── pacman-cache/  # 包缓存共享
 ├── config/            # 配置文件
 │   ├── layers/        # 层定义 (YAML)
+│   ├── files/         # 叠加文件源目录 (copy_files 用)
 │   └── inherit.list   # 继承列表
 ├── work/              # 构建工作区 (临时)
 │   ├── flat/          # 展平子卷 (Btrfs)
@@ -121,6 +122,43 @@ helper: enable_service
 services:
   - NetworkManager
   - sddm
+```
+
+```yaml
+# 04-overlay.yaml — 叠加配置文件
+name: overlay-files
+helper: copy_files
+files:
+  - src: etc/locale.conf        # 相对于 config/files/ 目录
+    dst: /etc/locale.conf        # 目标系统中的路径
+  - src: etc/pacman.d
+    dst: /etc/pacman.d
+```
+
+```yaml
+# 05-chroot-setup.yaml — 在 chroot 中执行命令
+name: chroot-setup
+helper: chroot-cmd
+env:
+  - key: LANG
+    value: "zh_CN.UTF-8"          # 固定值
+  - key: HOME
+    host_key: HOME                  # 继承主机环境变量
+commands:
+  - locale-gen
+  - systemd-machine-id-setup
+```
+
+```yaml
+# 06-chroot-kernel.yaml — 通过 chroot 安装内核
+name: chroot-kernel
+helper: chroot-pacman
+env:
+  - key: LANG
+    value: "C"
+packages:
+  - linux
+  - linux-firmware
 ```
 
 可选创建 `/starsleep/config/inherit.list`，从宿主系统继承文件到快照：
@@ -183,7 +221,9 @@ sudo starsleep maintain
 1. 清理不在配置中的多余软件包和孤立依赖
 2. 安装官方仓库和 AUR 软件包
 3. 启用/禁用 systemd 服务
-4. 对当前根目录创建 Btrfs 快照并部署引导
+4. 叠加配置文件
+5. 执行 chroot 命令
+6. 对当前根目录创建 Btrfs 快照并部署引导
 
 ## 命令参考
 
@@ -239,11 +279,20 @@ sudo starsleep maintain
 
 ```yaml
 name: <层名称>           # 必填，唯一标识
-helper: <工具类型>        # 必填，pacstrap | pacman | paru | enable_service
-packages:                # helper 为 pacstrap/pacman/paru 时使用
+helper: <工具类型>        # 必填，pacstrap | pacman | paru | enable_service | copy_files | chroot-cmd | chroot-pacman
+env:                     # 可选，chroot-cmd / chroot-pacman 使用
+  - key: <环境变量名>
+    value: <固定值>       # 与 host_key 二选一，value 优先
+    host_key: <主机变量名>  # 从主机继承环境变量
+packages:                # helper 为 pacstrap/pacman/paru/chroot-pacman 时使用
   - <包名>
 services:                # helper 为 enable_service 时使用
   - <服务名>
+files:                   # helper 为 copy_files 时使用
+  - src: <相对于 config/files/ 的路径>
+    dst: <目标系统路径>
+commands:                # helper 为 chroot-cmd 时使用
+  - <命令字符串>
 ```
 
 ### Helper 类型
@@ -254,6 +303,9 @@ services:                # helper 为 enable_service 时使用
 | `pacman` | 安装官方仓库软件包 | 使用 `pacman -S --needed --noconfirm`，同时声明式清理多余包 |
 | `paru` | 安装 AUR 软件包 | 通过 `runuser -u builder` 以非 root 用户调用 paru |
 | `enable_service` | 启用 systemd 服务 | 使用 `systemctl --root enable`，自动禁用不在配置中的多余服务 |
+| `copy_files` | 叠加配置文件 | 将 `config/files/` 下的文件/目录复制到目标系统指定位置，路径防穿越 |
+| `chroot-cmd` | 在 chroot 中执行命令 | 通过 `arch-chroot` 运行任意命令，支持环境变量预设 |
+| `chroot-pacman` | 在 chroot 中安装包 | 通过 `arch-chroot` 运行 pacman，适用于需 chroot 环境的包（如内核） |
 
 ## 许可证
 

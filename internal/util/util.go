@@ -89,6 +89,24 @@ func Run(name string, args ...string) error {
 	return cmd.Run()
 }
 
+// RunWithEnv 执行外部命令并附加额外的环境变量
+//
+// 在当前进程环境变量基础上追加 extraEnv 中的 KEY=VALUE 条目。
+// 用于 chroot 类 helper 传递自定义环境变量给 arch-chroot。
+//
+// @param extraEnv 额外的环境变量切片（KEY=VALUE 格式）
+// @param name 命令名称
+// @param args 命令参数
+// @return error 命令执行失败时返回错误
+func RunWithEnv(extraEnv []string, name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Env = append(os.Environ(), extraEnv...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	return cmd.Run()
+}
+
 // RunSilent 执行外部命令，捕获并返回标准输出
 //
 // 与 Run 不同，标准输出不会打印到控制台。
