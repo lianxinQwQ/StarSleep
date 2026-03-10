@@ -170,11 +170,11 @@ func cmdBuild(args []string) {
 			bindVFS(merged)
 		}
 
-		// 调用同步：在 OverlayFS 合并视图上执行包安装/服务启用
+		// 调用同步：在 OverlayFS 合并视图上执行包安装/服务启用/文件叠加
 		// 累积列表包含从第 0 层到当前层的所有包/服务，用于声明式清理
 		expectedPkgs := config.BuildCumulativePkgs(layers, i)
 		expectedSvcs := config.BuildCumulativeServices(layers, i)
-		layerOk := runSyncSafe(merged, cfg, expectedPkgs, expectedSvcs)
+		layerOk := runSyncSafe(merged, configDir, cfg, expectedPkgs, expectedSvcs)
 
 		// 卸载
 		syscall.Sync()
@@ -372,11 +372,12 @@ func isBtrfsSubvolume(path string) bool {
 // 从而允许调用方在同步失败时执行回滚逻辑（恢复 upper 层备份）。
 //
 // @param root 目标根目录路径
+// @param configDir 配置目录路径（copy_files 需要定位 files/ 子目录）
 // @param cfg 当前层配置
 // @param expectedPkgs 到当前层为止的累积包列表
 // @param expectedSvcs 到当前层为止的累积服务列表
 // @return ok 同步是否成功
-func runSyncSafe(root string, cfg *config.LayerConfig, expectedPkgs, expectedSvcs []string) (ok bool) {
+func runSyncSafe(root, configDir string, cfg *config.LayerConfig, expectedPkgs, expectedSvcs []string) (ok bool) {
 	oldMode := util.FatalPanicMode
 	util.FatalPanicMode = true
 	defer func() {
@@ -391,7 +392,7 @@ func runSyncSafe(root string, cfg *config.LayerConfig, expectedPkgs, expectedSvc
 		}
 	}()
 
-	syncLayer(root, cfg, expectedPkgs, expectedSvcs)
+	syncLayer(root, configDir, cfg, expectedPkgs, expectedSvcs)
 	return true
 }
 

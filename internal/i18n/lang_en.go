@@ -147,6 +147,7 @@ flatten options:
   │   └── pacman-cache/
   ├── config/          # Configuration files
   │   ├── layers/      # Layer definitions (YAML)
+  │   ├── files/       # Overlay files source dir
   │   └── inherit.list # Inherit list
   ├── work/            # Build workspace
   │   ├── flat/        # Flat subvolume (Btrfs)
@@ -191,6 +192,22 @@ flatten options:
 	"sync.target":       "[Sync] Target: %s",
 	"sync.packages":     "[Sync] Packages: %d",
 	"sync.services":     "[Sync] Services: %d",
+	"sync.files":        "[Sync] File mappings: %d",
+
+	// ── copyfiles ──
+	"copyfiles.path.escape":      "Path escape: %s",
+	"copyfiles.base.not.exist":   "Overlay files source directory does not exist: %s",
+	"copyfiles.start":            "[CopyFiles] Starting file overlay...",
+	"copyfiles.done":             "[CopyFiles] ✓ Done, %d mappings applied",
+	"copyfiles.src.invalid":      "[CopyFiles] Invalid source path: %s: %v",
+	"copyfiles.src.not.exist":    "[CopyFiles] Source path does not exist: %s (%s)",
+	"copyfiles.copy.item":        "[CopyFiles] %s → %s",
+	"copyfiles.copy.dir.failed":  "Failed to copy directory: %s: %v",
+	"copyfiles.copy.file.failed": "Failed to copy file: %s: %v",
+
+	// ── maintain copy_files ──
+	"maintain.step.copyfiles":      "[Maintain] Step 4.5/5: Overlaying config files...",
+	"maintain.step.copyfiles.skip": "[Maintain] Step 4.5/5: No files to overlay",
 
 	// ── enable_service.go ──
 	"sync.disable.extra":      "[Sync] Disabling extra service: %s",
@@ -249,30 +266,30 @@ flatten options:
 	"ovl.mknod":      "mknod %s: %w",
 
 	// ── compare.go ──
-	"compare.unknown.arg":         "compare: unknown argument: %s",
-	"compare.usage":               "Usage: starsleep compare --packages [-v] [-c <config-dir>]\n       starsleep compare --files <target-dir> [-v] [-c <config-dir>]",
-	"compare.files.need.dir":      "--files requires a target directory",
-	"compare.separator":           "[Compare] ═══════════════════════════════════════════════",
-	"compare.config.dir":          "[Compare] Config dir: %s",
-	"compare.pkg.title":           "[Compare] Package List Comparison Mode",
-	"compare.pkg.expected":        "[Compare] Expected packages from config (groups expanded): %d",
-	"compare.pkg.installed":       "[Compare] Explicitly installed packages: %d",
-	"compare.pkg.all.installed":   "[Compare] Total installed packages: %d",
-	"compare.query.failed":        "[Compare] Failed to query package list: %v",
-	"compare.pkg.groups.header":   "[Compare] Package group status (%d groups):",
-	"compare.pkg.groups.item":     "[Compare]   ■ %s",
-	"compare.pkg.missing.header":  "[Compare] Missing packages (in config but not installed): %d",
-	"compare.pkg.missing.item":    "[Compare]   - %s",
-	"compare.pkg.no.missing":      "[Compare] ✓ No missing packages",
-	"compare.pkg.asdeps.header":   "[Compare] Dep-installed packages (present but not explicit): %d",
-	"compare.pkg.asdeps.item":     "[Compare]   ~ %s",
-	"compare.pkg.no.asdeps":       "[Compare] ✓ No dep-installed packages",
-	"compare.pkg.extra.header":    "[Compare] Extra packages (explicitly installed but not in config): %d",
-	"compare.pkg.extra.item":      "[Compare]   + %s",
-	"compare.pkg.no.extra":        "[Compare] ✓ No extra packages",
-	"compare.pkg.match":           "[Compare] ✓ Package lists match perfectly",
-	"compare.pkg.diff":            "[Compare] ✗ %d differences found (missing: %d, extra: %d)",
-	"compare.pkg.diff.verbose":    "[Compare] ✗ %d differences found (missing: %d, dep-installed: %d, extra: %d)",
+	"compare.unknown.arg":           "compare: unknown argument: %s",
+	"compare.usage":                 "Usage: starsleep compare --packages [-v] [-c <config-dir>]\n       starsleep compare --files <target-dir> [-v] [-c <config-dir>]",
+	"compare.files.need.dir":        "--files requires a target directory",
+	"compare.separator":             "[Compare] ═══════════════════════════════════════════════",
+	"compare.config.dir":            "[Compare] Config dir: %s",
+	"compare.pkg.title":             "[Compare] Package List Comparison Mode",
+	"compare.pkg.expected":          "[Compare] Expected packages from config (groups expanded): %d",
+	"compare.pkg.installed":         "[Compare] Explicitly installed packages: %d",
+	"compare.pkg.all.installed":     "[Compare] Total installed packages: %d",
+	"compare.query.failed":          "[Compare] Failed to query package list: %v",
+	"compare.pkg.groups.header":     "[Compare] Package group status (%d groups):",
+	"compare.pkg.groups.item":       "[Compare]   ■ %s",
+	"compare.pkg.missing.header":    "[Compare] Missing packages (in config but not installed): %d",
+	"compare.pkg.missing.item":      "[Compare]   - %s",
+	"compare.pkg.no.missing":        "[Compare] ✓ No missing packages",
+	"compare.pkg.asdeps.header":     "[Compare] Dep-installed packages (present but not explicit): %d",
+	"compare.pkg.asdeps.item":       "[Compare]   ~ %s",
+	"compare.pkg.no.asdeps":         "[Compare] ✓ No dep-installed packages",
+	"compare.pkg.extra.header":      "[Compare] Extra packages (explicitly installed but not in config): %d",
+	"compare.pkg.extra.item":        "[Compare]   + %s",
+	"compare.pkg.no.extra":          "[Compare] ✓ No extra packages",
+	"compare.pkg.match":             "[Compare] ✓ Package lists match perfectly",
+	"compare.pkg.diff":              "[Compare] ✗ %d differences found (missing: %d, extra: %d)",
+	"compare.pkg.diff.verbose":      "[Compare] ✗ %d differences found (missing: %d, dep-installed: %d, extra: %d)",
 	"compare.file.title":            "[Compare] File Comparison Mode (based on latest snapshot)",
 	"compare.file.target":           "[Compare] Comparison target: %s",
 	"compare.file.snapshot":         "[Compare] Base snapshot: %s",
@@ -286,4 +303,4 @@ flatten options:
 	"compare.rsync.failed":          "[Compare] rsync comparison command failed: %v",
 	"compare.cleanup.done":          "[Compare] Temporary snapshot cleaned up",
 	"compare.target.not.dir":        "Comparison target is not a directory: %s",
-	"compare.src.not.dir":           "Corresponding directory not found in snapshot: %s",}
+	"compare.src.not.dir":           "Corresponding directory not found in snapshot: %s"}

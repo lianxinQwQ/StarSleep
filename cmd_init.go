@@ -66,6 +66,7 @@ func cmdInit(args []string) {
 		filepath.Join(workDir, "snapshots"),     // 生产快照
 		filepath.Join(workDir, "shared"),        // 共享数据根目录
 		filepath.Join(workDir, "config/layers"), // 层定义 YAML
+		filepath.Join(workDir, "config/files"),  // 叠加文件源目录
 		filepath.Join(workDir, "work/merged"),   // OverlayFS 合并挂载点
 		filepath.Join(workDir, "work/ovl_work"), // OverlayFS 工作目录
 		filepath.Join(workDir, "logs"),          // 构建日志

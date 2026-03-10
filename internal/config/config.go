@@ -21,19 +21,37 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// FilesDir 是配置目录下存放叠加文件的子目录名。
+//
+// copy_files 类型的层引用的所有源文件/目录都必须位于此子目录中，
+// 路径验证确保不会逃逸到该目录之外。
+const FilesDir = "files"
+
+// FileMapping 表示一个文件叠加映射对
+//
+// Src 为源文件/目录路径（相对于 configDir/files/ 目录），
+// Dst 为目标文件/目录路径（在构建根目录中的位置）。
+type FileMapping struct {
+	Src string `yaml:"src"`
+	Dst string `yaml:"dst"`
+}
+
 // LayerConfig 表示一个配置层的 YAML 结构
 //
-// 每个层定义了名称、使用的工具（helper）、待安装的包列表和待启用的服务列表。
+// 每个层定义了名称、使用的工具（helper）、待安装的包列表、待启用的服务列表
+// 和待叠加的文件映射列表。
 // helper 类型决定了如何处理该层:
 //   - pacstrap: 使用 pacstrap 初始化基础系统
 //   - pacman: 使用 pacman 同步官方仓库包
 //   - paru: 使用 paru 安装 AUR 包
 //   - enable_service: 启用 systemd 服务
+//   - copy_files: 将配置目录中的文件叠加到目标系统
 type LayerConfig struct {
-	Name     string   `yaml:"name"`
-	Helper   string   `yaml:"helper"`
-	Packages []string `yaml:"packages"`
-	Services []string `yaml:"services"`
+	Name     string        `yaml:"name"`
+	Helper   string        `yaml:"helper"`
+	Packages []string      `yaml:"packages"`
+	Services []string      `yaml:"services"`
+	Files    []FileMapping `yaml:"files"`
 }
 
 // loadLayerConfig 从 YAML 文件加载单个层配置
@@ -193,7 +211,8 @@ func ParseConfigFlags(defaultConfigDir string, args []string) (configDir string,
 
 // CopyConfig 将源配置目录的内容复制到目标目录
 //
-// 复制 src/layers/ 目录下的所有文件和 src/inherit.list（如果存在）。
+// 复制 src/layers/ 目录下的所有文件、src/files/ 目录（叠加文件）
+// 和 src/inherit.list（如果存在）。
 //
 // @param src 源配置目录路径
 // @param dst 目标配置目录路径
@@ -225,6 +244,17 @@ func CopyConfig(src, dst string) error {
 			return err
 		}
 	}
+
+	// 复制 files/ 叠加文件目录（如果存在）
+	srcFiles := filepath.Join(src, FilesDir)
+	if ffi, err := os.Stat(srcFiles); err == nil && ffi.IsDir() {
+		dstFiles := filepath.Join(dst, FilesDir)
+		os.RemoveAll(dstFiles)
+		if err := util.Run("cp", "-a", "--reflink=auto", srcFiles, dstFiles); err != nil {
+			return fmt.Errorf(i18n.T("cfg.copy.failed"), err)
+		}
+	}
+
 	inheritSrc := filepath.Join(src, "inherit.list")
 	if _, err := os.Stat(inheritSrc); err == nil {
 		data, err := os.ReadFile(inheritSrc)

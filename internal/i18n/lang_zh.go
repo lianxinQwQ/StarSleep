@@ -147,6 +147,7 @@ flatten 选项:
   │   └── pacman-cache/
   ├── config/          # 配置文件
   │   ├── layers/      # 层定义 (YAML)
+  │   ├── files/       # 叠加文件源目录
   │   └── inherit.list # 继承列表
   ├── work/            # 构建工作区
   │   ├── flat/        # 展平子卷 (Btrfs)
@@ -191,6 +192,22 @@ flatten 选项:
 	"sync.target":       "[Sync] 目标: %s",
 	"sync.packages":     "[Sync] 软件包: %d 个",
 	"sync.services":     "[Sync] 服务: %d 个",
+	"sync.files":        "[Sync] 文件映射: %d 对",
+
+	// ── copyfiles ──
+	"copyfiles.path.escape":      "路径逃逸: %s",
+	"copyfiles.base.not.exist":   "叠加文件源目录不存在: %s",
+	"copyfiles.start":            "[CopyFiles] 开始叠加文件...",
+	"copyfiles.done":             "[CopyFiles] ✓ 完成，共叠加 %d 个映射",
+	"copyfiles.src.invalid":      "[CopyFiles] 源路径无效: %s: %v",
+	"copyfiles.src.not.exist":    "[CopyFiles] 源路径不存在: %s (%s)",
+	"copyfiles.copy.item":        "[CopyFiles] %s → %s",
+	"copyfiles.copy.dir.failed":  "复制目录失败: %s: %v",
+	"copyfiles.copy.file.failed": "复制文件失败: %s: %v",
+
+	// ── maintain copy_files ──
+	"maintain.step.copyfiles":      "[Maintain] 步骤 4.5/5: 叠加配置文件...",
+	"maintain.step.copyfiles.skip": "[Maintain] 步骤 4.5/5: 无文件需要叠加",
 
 	// ── enable_service.go ──
 	"sync.disable.extra":      "[Sync] 禁用多余服务: %s",
@@ -249,30 +266,30 @@ flatten 选项:
 	"ovl.mknod":      "mknod %s: %w",
 
 	// ── compare.go ──
-	"compare.unknown.arg":         "compare: 未知参数: %s",
-	"compare.usage":               "用法: starsleep compare --packages [-v] [-c <配置目录>]\n       starsleep compare --files <目标目录> [-v] [-c <配置目录>]",
-	"compare.files.need.dir":      "--files 需要指定目标目录",
-	"compare.separator":           "[Compare] ═══════════════════════════════════════════════",
-	"compare.config.dir":          "[Compare] 配置目录: %s",
-	"compare.pkg.title":           "[Compare] 软件包列表对比模式",
-	"compare.pkg.expected":        "[Compare] 配置期望包数 (展开组后): %d",
-	"compare.pkg.installed":       "[Compare] 系统主动安装包数: %d",
-	"compare.pkg.all.installed":   "[Compare] 系统全量已安装包数: %d",
-	"compare.query.failed":        "[Compare] 查询包列表失败: %v",
-	"compare.pkg.groups.header":   "[Compare] 包组状态 (%d 个):",
-	"compare.pkg.groups.item":     "[Compare]   ■ %s",
-	"compare.pkg.missing.header":  "[Compare] 缺失包 (配置中有但系统未安装): %d 个",
-	"compare.pkg.missing.item":    "[Compare]   - %s",
-	"compare.pkg.no.missing":      "[Compare] ✓ 无缺失包",
-	"compare.pkg.asdeps.header":   "[Compare] 依赖安装包 (存在但非主动安装): %d 个",
-	"compare.pkg.asdeps.item":     "[Compare]   ~ %s",
-	"compare.pkg.no.asdeps":       "[Compare] ✓ 无依赖安装包",
-	"compare.pkg.extra.header":    "[Compare] 多余包 (系统主动安装但配置中未定义): %d 个",
-	"compare.pkg.extra.item":      "[Compare]   + %s",
-	"compare.pkg.no.extra":        "[Compare] ✓ 无多余包",
-	"compare.pkg.match":           "[Compare] ✓ 软件包列表完全匹配",
-	"compare.pkg.diff":            "[Compare] ✗ 共 %d 处差异 (缺失: %d, 多余: %d)",
-	"compare.pkg.diff.verbose":    "[Compare] ✗ 共 %d 处差异 (缺失: %d, 依赖安装: %d, 多余: %d)",
+	"compare.unknown.arg":           "compare: 未知参数: %s",
+	"compare.usage":                 "用法: starsleep compare --packages [-v] [-c <配置目录>]\n       starsleep compare --files <目标目录> [-v] [-c <配置目录>]",
+	"compare.files.need.dir":        "--files 需要指定目标目录",
+	"compare.separator":             "[Compare] ═══════════════════════════════════════════════",
+	"compare.config.dir":            "[Compare] 配置目录: %s",
+	"compare.pkg.title":             "[Compare] 软件包列表对比模式",
+	"compare.pkg.expected":          "[Compare] 配置期望包数 (展开组后): %d",
+	"compare.pkg.installed":         "[Compare] 系统主动安装包数: %d",
+	"compare.pkg.all.installed":     "[Compare] 系统全量已安装包数: %d",
+	"compare.query.failed":          "[Compare] 查询包列表失败: %v",
+	"compare.pkg.groups.header":     "[Compare] 包组状态 (%d 个):",
+	"compare.pkg.groups.item":       "[Compare]   ■ %s",
+	"compare.pkg.missing.header":    "[Compare] 缺失包 (配置中有但系统未安装): %d 个",
+	"compare.pkg.missing.item":      "[Compare]   - %s",
+	"compare.pkg.no.missing":        "[Compare] ✓ 无缺失包",
+	"compare.pkg.asdeps.header":     "[Compare] 依赖安装包 (存在但非主动安装): %d 个",
+	"compare.pkg.asdeps.item":       "[Compare]   ~ %s",
+	"compare.pkg.no.asdeps":         "[Compare] ✓ 无依赖安装包",
+	"compare.pkg.extra.header":      "[Compare] 多余包 (系统主动安装但配置中未定义): %d 个",
+	"compare.pkg.extra.item":        "[Compare]   + %s",
+	"compare.pkg.no.extra":          "[Compare] ✓ 无多余包",
+	"compare.pkg.match":             "[Compare] ✓ 软件包列表完全匹配",
+	"compare.pkg.diff":              "[Compare] ✗ 共 %d 处差异 (缺失: %d, 多余: %d)",
+	"compare.pkg.diff.verbose":      "[Compare] ✗ 共 %d 处差异 (缺失: %d, 依赖安装: %d, 多余: %d)",
 	"compare.file.title":            "[Compare] 文件对比模式 (基于最新快照)",
 	"compare.file.target":           "[Compare] 对比目标: %s",
 	"compare.file.snapshot":         "[Compare] 基准快照: %s",

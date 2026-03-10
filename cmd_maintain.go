@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"starsleep/internal/config"
+	"starsleep/internal/copyfiles"
 	"starsleep/internal/i18n"
 	"starsleep/internal/pkgmgr"
 	"starsleep/internal/service"
@@ -47,6 +48,7 @@ func cmdMaintain(args []string) {
 	var officialPkgs []string
 	var aurPkgs []string
 	var services []string
+	var copyFileMappings []config.FileMapping
 
 	for _, cfg := range layers {
 		switch cfg.Helper {
@@ -56,6 +58,8 @@ func cmdMaintain(args []string) {
 			aurPkgs = append(aurPkgs, cfg.Packages...)
 		case "enable_service":
 			services = append(services, cfg.Services...)
+		case "copy_files":
+			copyFileMappings = append(copyFileMappings, cfg.Files...)
 		}
 	}
 
@@ -124,6 +128,14 @@ func cmdMaintain(args []string) {
 		service.EnableServiceLive(services)
 	} else {
 		fmt.Println(i18n.T("maintain.step4.skip"))
+	}
+
+	// 4.5. 叠加文件
+	if len(copyFileMappings) > 0 {
+		fmt.Println(i18n.T("maintain.step.copyfiles"))
+		copyfiles.CopyFilesLive(configDir, copyFileMappings)
+	} else {
+		fmt.Println(i18n.T("maintain.step.copyfiles.skip"))
 	}
 
 	// 5. 创建快照并部署引导
