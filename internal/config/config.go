@@ -254,8 +254,8 @@ func ParseConfigFlags(defaultConfigDir string, args []string) (configDir string,
 
 // CopyConfig 将源配置目录的内容复制到目标目录
 //
-// 复制 src/layers/ 目录下的所有文件、src/files/ 目录（叠加文件）
-// 和 src/inherit.list（如果存在）。
+// 先清理目标目录中的 layers/ 和 files/ 子目录，再从源目录复制，
+// 避免残留的旧文件（如改名后的层）导致构建异常。
 //
 // @param src 源配置目录路径
 // @param dst 目标配置目录路径
@@ -268,7 +268,10 @@ func CopyConfig(src, dst string) error {
 	if !fi.IsDir() {
 		return fmt.Errorf(i18n.T("cfg.src.not.dir"), src)
 	}
+
+	// 清理目标 layers/ 目录，防止残留的旧层文件
 	dstLayers := filepath.Join(dst, "layers")
+	os.RemoveAll(dstLayers)
 	os.MkdirAll(dstLayers, 0o755)
 	srcLayers := filepath.Join(src, "layers")
 	entries, err := os.ReadDir(srcLayers)
@@ -298,15 +301,19 @@ func CopyConfig(src, dst string) error {
 		}
 	}
 
+	// 复制 inherit.list（如果存在），若源目录中不存在则清理目标中的旧文件
+	inheritDst := filepath.Join(dst, "inherit.list")
 	inheritSrc := filepath.Join(src, "inherit.list")
 	if _, err := os.Stat(inheritSrc); err == nil {
 		data, err := os.ReadFile(inheritSrc)
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(dst, "inherit.list"), data, 0o644); err != nil {
+		if err := os.WriteFile(inheritDst, data, 0o644); err != nil {
 			return err
 		}
+	} else {
+		os.Remove(inheritDst)
 	}
 	return nil
 }
