@@ -24,9 +24,9 @@ import (
 
 // InheritApplier 继承列表应用回调函数类型
 //
-// 将 inherit.list 中定义的文件从宿主机 reflink 复制到快照中。
+// 将 config.yaml 中 inherit 段定义的文件从宿主机 reflink 复制到快照中。
 // 由调用方（main 包的 applyInheritList）提供具体实现。
-type InheritApplier func(configDir, snapshotDir string)
+type InheritApplier func(snapshotDir string)
 
 // Files 执行文件对比模式
 //
@@ -34,11 +34,10 @@ type InheritApplier func(configDir, snapshotDir string)
 // 应用 inherit.list 继承列表后，与指定目标目录进行文件级 rsync 对比。
 // 不需要重新构建系统，直接复用已有快照，快速高效。
 //
-// @param configDir 配置目录路径
 // @param targetDir 要对比的目标目录路径
 // @param workDir 工作目录（存放 snapshots 等子目录）
 // @param applyInherit 继承列表应用函数
-func Files(configDir, targetDir, workDir string, applyInherit InheritApplier) {
+func Files(targetDir, workDir string, applyInherit InheritApplier) {
 	// 验证目标目录存在
 	fi, err := os.Stat(targetDir)
 	if err != nil || !fi.IsDir() {
@@ -57,7 +56,6 @@ func Files(configDir, targetDir, workDir string, applyInherit InheritApplier) {
 
 	fmt.Println(i18n.T("compare.separator"))
 	fmt.Println(i18n.T("compare.file.title"))
-	fmt.Println(i18n.T("compare.config.dir", configDir))
 	fmt.Println(i18n.T("compare.file.target", targetDir))
 	fmt.Println(i18n.T("compare.file.snapshot", latestTarget))
 	fmt.Println(i18n.T("compare.separator"))
@@ -76,7 +74,7 @@ func Files(configDir, targetDir, workDir string, applyInherit InheritApplier) {
 
 	// ── 应用 inherit.list ──
 	fmt.Println(i18n.T("compare.file.applying.inherit"))
-	applyInherit(configDir, tmpSnapDir)
+	applyInherit(tmpSnapDir)
 
 	// ── rsync 对比快照与目标目录 ──
 	// 如果目标是绝对路径（如 /etc/），对比快照中对应的子目录

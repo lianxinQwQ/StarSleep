@@ -102,7 +102,7 @@ func cmdBuild(args []string) {
 	}
 
 	// 加载配置
-	layers, _, err := config.LoadAllLayers(configDir)
+	layers, mainCfg, err := config.LoadAllLayers(configDir)
 	if err != nil {
 		util.Fatal(i18n.T("load.config.failed", err))
 	}
@@ -235,7 +235,7 @@ func cmdBuild(args []string) {
 	}
 
 	// 应用继承列表
-	applyInheritList(configDir, snapshotDir)
+	applyInheritList(mainCfg, snapshotDir)
 
 	// 更新 latest 符号链接
 	latestLink := filepath.Join(workDir, "snapshots/latest")
@@ -412,17 +412,14 @@ func runSyncSafe(root, configDir string, cfg *config.LayerConfig, expectedPkgs, 
 
 // applyInheritList 从当前系统复制继承路径到快照
 //
-// 根据 inherit.list 配置文件中列出的路径，将宿主机上的文件或目录
+// 根据 config.yaml 中 inherit 段列出的路径，将宿主机上的文件或目录
 // 通过 reflink 复制到新生成的快照中，实现配置/数据的跨快照继承。
 //
-// @param configDir 配置目录路径（包含 inherit.list 文件）
+// @param mc 主配置结构体指针
 // @param snapshotDir 目标快照目录路径
-func applyInheritList(configDir, snapshotDir string) {
-	paths, err := config.LoadInheritList(configDir)
-	if err != nil || len(paths) == 0 {
-		if err != nil {
-			util.LogMsg("%s", i18n.T("inherit.not.found"))
-		}
+func applyInheritList(mc *config.MainConfig, snapshotDir string) {
+	paths := config.LoadInheritList(mc)
+	if len(paths) == 0 {
 		return
 	}
 

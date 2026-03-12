@@ -79,7 +79,7 @@ func cmdCompare(args []string) {
 	}
 
 	// 加载配置
-	layers, _, err := config.LoadAllLayers(configDir)
+	layers, mainCfg, err := config.LoadAllLayers(configDir)
 	if err != nil {
 		util.Fatal(i18n.T("load.config.failed", err))
 	}
@@ -89,6 +89,8 @@ func cmdCompare(args []string) {
 	case compareModePackages:
 		compare.Packages(layers, configDir, verbose)
 	case compareModeFiles:
-		compare.Files(configDir, filesTarget, defaultWorkDir, applyInheritList)
+		compare.Files(filesTarget, defaultWorkDir, func(snapshotDir string) {
+			applyInheritList(mainCfg, snapshotDir)
+		})
 	}
 }

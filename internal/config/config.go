@@ -3,16 +3,15 @@
 // 配置目录结构:
 //
 //	config/
-//	├── layers/        # 层定义 YAML 文件（按文件名排序确定构建顺序）
-//	└── inherit.list   # 继承路径列表
+//	├── config.yaml    # 主配置文件（调度层顺序、元信息、继承列表）
+//	├── layers/        # 层定义 YAML 文件（支持单步骤和多步骤）
+//	└── files/         # copy_files 层引用的叠加文件源目录
 package config
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"starsleep/internal/i18n"
@@ -26,6 +25,22 @@ import (
 // copy_files 类型的层引用的所有源文件/目录都必须位于此子目录中，
 // 路径验证确保不会逃逸到该目录之外。
 const FilesDir = "files"
+
+// MetaConfig 表示 config.yaml 中的 meta 段
+//
+// 所有字段均为可选，未设置时由调用方回退到代码中的默认常量。
+type MetaConfig struct {
+	WorkDir     string `yaml:"work_dir,omitempty"`
+	SnapshotDir string `yaml:"snapshot_dir,omitempty"`
+	PkgCache    string `yaml:"pkg_cache,omitempty"`
+}
+
+// MainConfig 表示 config.yaml 的顶层结构
+type MainConfig struct {
+	Meta    MetaConfig `yaml:"meta,omitempty"`
+	Layers  []string   `yaml:"layers"`
+	Inherit []string   `yaml:"inherit,omitempty"`
+}
 
 // FileMapping 表示一个文件叠加映射对
 //
@@ -49,10 +64,8 @@ type EnvVar struct {
 	HostKey string `yaml:"host_key,omitempty"`
 }
 
-// LayerConfig 表示一个配置层的 YAML 结构
+// LayerConfig 表示一个配置层（单步骤）
 //
-// 每个层定义了名称、使用的工具（helper）、环境变量、待安装的包列表、
-// 待启用的服务列表、待叠加的文件映射列表和待执行的命令列表。
 // helper 类型决定了如何处理该层:
 //   - pacstrap: 使用 pacstrap 初始化基础系统
 //   - pacman: 使用 pacman 同步官方仓库包
@@ -65,89 +78,181 @@ type LayerConfig struct {
 	Name     string        `yaml:"name"`
 	Helper   string        `yaml:"helper"`
 	Env      []EnvVar      `yaml:"env,omitempty"`
-	Packages []string      `yaml:"packages"`
-	Services []string      `yaml:"services"`
-	Files    []FileMapping `yaml:"files"`
+	Packages []string      `yaml:"packages,omitempty"`
+	Services []string      `yaml:"services,omitempty"`
+	Files    []FileMapping `yaml:"files,omitempty"`
 	Commands []string      `yaml:"commands,omitempty"`
 }
 
-// loadLayerConfig 从 YAML 文件加载单个层配置
+// LoadMainConfig 加载 config.yaml 主配置文件
 //
-// @param path YAML 文件的绝对路径
-// @return 解析后的层配置结构体指针
+// @param configDir 配置目录路径
+// @return 解析后的主配置结构体指针
 // @return error 文件读取或 YAML 解析失败时返回错误
-func loadLayerConfig(path string) (*LayerConfig, error) {
+func LoadMainConfig(configDir string) (*MainConfig, error) {
+	path := filepath.Join(configDir, "config.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("cfg.read"), path, err)
 	}
-	var cfg LayerConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	var mc MainConfig
+	if err := yaml.Unmarshal(data, &mc); err != nil {
 		return nil, fmt.Errorf(i18n.T("cfg.parse"), path, err)
 	}
-	return &cfg, nil
+	if len(mc.Layers) == 0 {
+		return nil, fmt.Errorf("%s", i18n.T("cfg.no.layers"))
+	}
+	return &mc, nil
 }
 
-// LoadAllLayers 加载配置目录下所有层配置，按文件名字母序排序
+// loadLayerFile 从 YAML 文件加载层配置
 //
-// 扫描 configDir/layers/ 下所有 *.yaml 文件，按文件名排序后逐个加载。
-// 文件名序决定了层的构建顺序（如 01-base.yaml 先于 02-desktop.yaml）。
+// 支持两种格式:
+//   - 顶层对象（单步骤）: 直接解析为单个 LayerConfig
+//   - 顶层列表（多步骤）: 解析为多个 LayerConfig，按文件内上下顺序排列
+//
+// @param path YAML 文件的绝对路径
+// @return 解析后的层配置切片
+// @return error 文件读取或 YAML 解析失败时返回错误
+func loadLayerFile(path string) ([]*LayerConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf(i18n.T("cfg.read"), path, err)
+	}
+
+	// 先尝试解析为列表（多步骤格式）
+	var multi []*LayerConfig
+	if err := yaml.Unmarshal(data, &multi); err == nil && len(multi) > 0 {
+		return multi, nil
+	}
+
+	// 回退为单个对象（单步骤格式）
+	var single LayerConfig
+	if err := yaml.Unmarshal(data, &single); err != nil {
+		return nil, fmt.Errorf(i18n.T("cfg.parse"), path, err)
+	}
+	return []*LayerConfig{&single}, nil
+}
+
+// ValidateLayerFiles 校验 config.yaml 中引用的层文件与 layers/ 目录的一致性
+//
+// 检查两类问题:
+//   - config.yaml 引用了不存在的层文件 → 报错退出
+//   - layers/ 目录中存在未被引用的文件 → 报错退出
 //
 // @param configDir 配置目录路径
-// @return 解析后的层配置切片、对应的文件路径切片、以及可能的错误
-func LoadAllLayers(configDir string) ([]*LayerConfig, []string, error) {
+// @param declaredFiles config.yaml 中声明的层文件名列表
+// @return error 一致性校验失败时返回错误
+func ValidateLayerFiles(configDir string, declaredFiles []string) error {
 	layersDir := filepath.Join(configDir, "layers")
-	matches, err := filepath.Glob(filepath.Join(layersDir, "*.yaml"))
+
+	// 检查 config.yaml 引用的文件是否都存在
+	for _, name := range declaredFiles {
+		path := filepath.Join(layersDir, name)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return fmt.Errorf(i18n.T("cfg.layer.not.exist"), name)
+		}
+	}
+
+	// 检查 layers/ 目录中是否有未被引用的 yaml 文件
+	entries, err := os.ReadDir(layersDir)
 	if err != nil {
-		return nil, nil, fmt.Errorf(i18n.T("cfg.scan"), err)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf(i18n.T("cfg.scan"), err)
 	}
-	if len(matches) == 0 {
-		return nil, nil, fmt.Errorf(i18n.T("cfg.no.files"), layersDir)
+
+	declared := make(map[string]struct{}, len(declaredFiles))
+	for _, name := range declaredFiles {
+		declared[name] = struct{}{}
 	}
-	sort.Strings(matches)
+
+	var unreferenced []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".yaml") {
+			continue
+		}
+		if _, ok := declared[name]; !ok {
+			unreferenced = append(unreferenced, name)
+		}
+	}
+	if len(unreferenced) > 0 {
+		return fmt.Errorf(i18n.T("cfg.layer.unreferenced"), strings.Join(unreferenced, ", "))
+	}
+
+	return nil
+}
+
+// LoadAllLayers 加载配置目录下所有层配置，按 config.yaml 声明的顺序
+//
+// 从 config.yaml 读取层文件列表，校验文件一致性后按序加载。
+// 每个层文件可包含一个或多个步骤（LayerConfig）。
+//
+// @param configDir 配置目录路径
+// @return 解析后的层配置切片、主配置、以及可能的错误
+func LoadAllLayers(configDir string) ([]*LayerConfig, *MainConfig, error) {
+	mc, err := LoadMainConfig(configDir)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := ValidateLayerFiles(configDir, mc.Layers); err != nil {
+		return nil, nil, err
+	}
+
+	layersDir := filepath.Join(configDir, "layers")
 	var configs []*LayerConfig
-	for _, path := range matches {
-		cfg, err := loadLayerConfig(path)
+	for _, name := range mc.Layers {
+		path := filepath.Join(layersDir, name)
+		steps, err := loadLayerFile(path)
 		if err != nil {
 			return nil, nil, err
 		}
-		configs = append(configs, cfg)
+		configs = append(configs, steps...)
 	}
-	return configs, matches, nil
+	return configs, mc, nil
 }
 
-// LoadInheritList 从 inherit.list 文件加载继承路径列表
+// LoadInheritList 从主配置中获取继承路径列表
 //
-// inherit.list 文件每行一个路径，支持 # 注释和空行。
-// 这些路径将在构建完成后从宿主机复制到快照中。
+// 优先使用 config.yaml 中的 inherit 段，若未定义则返回 nil。
 //
-// @param configDir 配置目录路径
-// @return 继承路径切片，文件不存在时返回 nil
-// @return error 文件读取失败时返回错误
-func LoadInheritList(configDir string) ([]string, error) {
-	path := filepath.Join(configDir, "inherit.list")
-	f, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
+// @param mc 主配置结构体指针
+// @return 继承路径切片
+func LoadInheritList(mc *MainConfig) []string {
+	if mc == nil || len(mc.Inherit) == 0 {
+		return nil
 	}
-	defer f.Close()
-	var paths []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		// 去除行内注释
-		if idx := strings.Index(line, "#"); idx >= 0 {
-			line = strings.TrimSpace(line[:idx])
-		}
-		if line == "" {
-			continue
-		}
-		paths = append(paths, line)
+	return mc.Inherit
+}
+
+// ResolveWorkDir 解析工作目录，优先使用配置文件中的值
+func ResolveWorkDir(mc *MainConfig, defaultVal string) string {
+	if mc != nil && mc.Meta.WorkDir != "" {
+		return mc.Meta.WorkDir
 	}
-	return paths, scanner.Err()
+	return defaultVal
+}
+
+// ResolveSnapshotDir 解析快照目录，优先使用配置文件中的值
+func ResolveSnapshotDir(mc *MainConfig, defaultVal string) string {
+	if mc != nil && mc.Meta.SnapshotDir != "" {
+		return mc.Meta.SnapshotDir
+	}
+	return defaultVal
+}
+
+// ResolvePkgCache 解析包缓存目录，优先使用配置文件中的值
+func ResolvePkgCache(mc *MainConfig, defaultVal string) string {
+	if mc != nil && mc.Meta.PkgCache != "" {
+		return mc.Meta.PkgCache
+	}
+	return defaultVal
 }
 
 // ResolveEnv 将配置中的环境变量列表解析为 KEY=VALUE 字符串切片
@@ -254,6 +359,7 @@ func ParseConfigFlags(defaultConfigDir string, args []string) (configDir string,
 
 // CopyConfig 将源配置目录的内容复制到目标目录
 //
+// 复制 config.yaml、layers/ 目录和 files/ 目录。
 // 先清理目标目录中的 layers/ 和 files/ 子目录，再从源目录复制，
 // 避免残留的旧文件（如改名后的层）导致构建异常。
 //
@@ -267,6 +373,15 @@ func CopyConfig(src, dst string) error {
 	}
 	if !fi.IsDir() {
 		return fmt.Errorf(i18n.T("cfg.src.not.dir"), src)
+	}
+
+	// 复制 config.yaml 主配置文件
+	srcMain := filepath.Join(src, "config.yaml")
+	if data, err := os.ReadFile(srcMain); err == nil {
+		os.MkdirAll(dst, 0o755)
+		if err := os.WriteFile(filepath.Join(dst, "config.yaml"), data, 0o644); err != nil {
+			return err
+		}
 	}
 
 	// 清理目标 layers/ 目录，防止残留的旧层文件
@@ -301,19 +416,5 @@ func CopyConfig(src, dst string) error {
 		}
 	}
 
-	// 复制 inherit.list（如果存在），若源目录中不存在则清理目标中的旧文件
-	inheritDst := filepath.Join(dst, "inherit.list")
-	inheritSrc := filepath.Join(src, "inherit.list")
-	if _, err := os.Stat(inheritSrc); err == nil {
-		data, err := os.ReadFile(inheritSrc)
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(inheritDst, data, 0o644); err != nil {
-			return err
-		}
-	} else {
-		os.Remove(inheritDst)
-	}
 	return nil
 }

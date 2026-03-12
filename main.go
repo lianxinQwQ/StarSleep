@@ -14,9 +14,9 @@ import (
 
 const (
 	// defaultWorkDir 默认工作目录，存放 layers、snapshots、work 等子目录
-	defaultWorkDir = "/starsleep"
-	// defaultConfigDir 默认配置目录，存放层定义 YAML 和 inherit.list
-	defaultConfigDir = "/starsleep/config"
+	defaultWorkDir = DefaultWorkDir
+	// defaultConfigDir 默认配置目录，存放 config.yaml、layers/、files/
+	defaultConfigDir = DefaultConfigDir
 )
 
 // main 程序入口
