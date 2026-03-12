@@ -2,7 +2,9 @@
 //
 // 所有常量均可被 config.yaml 中 meta 段的对应字段覆盖。
 // 若配置文件未定义，则回退至此处的值。
-package main
+package config
+
+
 
 const (
 	// DefaultWorkDir 默认工作目录，存放 layers、snapshots、work 等子目录
@@ -14,3 +16,5 @@ const (
 	// DefaultPkgCacheDir pacman 包缓存目录（宿主机侧，挂载进 chroot 复用）
 	DefaultPkgCacheDir = "/var/cache/pacman/pkg"
 )
+
+

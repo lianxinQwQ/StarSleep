@@ -1,13 +1,8 @@
-// cmd_deploy.go — starsleep flatten 命令
+// deploy 包 — starsleep deploy 命令
 //
 // 将 StarSleep 快照的内核和 initramfs 复制到 ESP 分区，
 // 并生成 systemd-boot 引导条目。
-//
-// 支持的操作:
-//   - 部署快照到引导分区（默认或指定快照）
-//   - --list: 列出所有已部署的引导条目
-//   - --remove <名称>: 删除指定引导条目
-package main
+package deploy
 
 import (
 	"fmt"
@@ -15,36 +10,29 @@ import (
 	"path/filepath"
 	"strings"
 
+	"starsleep/internal/config"
 	"starsleep/internal/i18n"
 	"starsleep/internal/util"
 )
 
 const (
-	// bootDir ESP 分区上 StarSleep 启动文件存放目录
-	bootDir = "/boot/starsleep"
-	// entryDir systemd-boot 引导条目配置目录
-	entryDir = "/boot/loader/entries"
-	// subvolPrefix Btrfs 子卷前缀，用于引导参数中的 rootflags
-	subvolPrefix = "starsleep/snapshots"
-	// entryTitle 引导条目标题
-	entryTitle = "StarSleep"
-	// kernelOpts 内核启动参数
-	kernelOpts = "lsm=landlock,lockdown,yama,integrity,apparmor,bpf quiet splash loglevel=3 systemd.show_status=auto rd.udev.log_level=3 rw"
+	// BootDir ESP 分区上 StarSleep 启动文件存放目录
+	BootDir = "/boot/starsleep"
+	// EntryDir systemd-boot 引导条目配置目录
+	EntryDir = "/boot/loader/entries"
+	// SubvolPrefix Btrfs 子卷前缀
+	SubvolPrefix = "starsleep/snapshots"
+	// EntryTitle 引导条目标题
+	EntryTitle = "StarSleep"
+	// KernelOpts 内核启动参数
+	KernelOpts = "lsm=landlock,lockdown,yama,integrity,apparmor,bpf quiet splash loglevel=3 systemd.show_status=auto rd.udev.log_level=3 rw"
 )
 
-// cmdFlatten 执行快照部署命令
-//
-// 将指定快照（或 latest）的内核和 initramfs 部署到 ESP 分区，
-// 并生成 systemd-boot 引导条目。
-//
-// @param args 命令行参数列表，支持:
-//   - --list: 列出已部署的引导条目
-//   - --remove <名称>: 删除指定引导条目
-//   - <快照路径>: 要部署的快照（默认: snapshots/latest）
-func cmdFlatten(args []string) {
+// Run 执行快照部署命令
+func Run(args []string) {
 	util.CheckRoot()
 
-	workDir := defaultWorkDir
+	workDir := config.DefaultWorkDir
 
 	if len(args) > 0 {
 		switch args[0] {
@@ -62,7 +50,6 @@ func cmdFlatten(args []string) {
 
 	var target string
 	if len(args) == 0 {
-		// 未指定快照时使用 latest 符号链接
 		target = filepath.Join(workDir, "snapshots/latest")
 	} else {
 		target = args[0]
@@ -87,26 +74,17 @@ func cmdFlatten(args []string) {
 	}
 
 	snapName := filepath.Base(target)
-	deploySnapshot(target, snapName)
+	DeploySnapshot(target, snapName)
 
 	fmt.Println(i18n.T("deploy.separator"))
 	fmt.Println(i18n.T("deploy.done"))
 	fmt.Println()
 	fmt.Println(i18n.T("deploy.reboot.hint"))
-	fmt.Println(i18n.T("deploy.reboot.entry", entryTitle, snapName))
+	fmt.Println(i18n.T("deploy.reboot.entry", EntryTitle, snapName))
 }
 
-// deploySnapshot 将快照的内核和 initramfs 部署到 boot 分区并生成引导条目
-//
-// 操作步骤:
-//  1. 查找快照内的 vmlinuz-* 和 initramfs-*.img
-//  2. 复制到 ESP 分区的快照专属目录
-//  3. 生成 systemd-boot 引导条目配置文件
-//
-// @param target 快照目录的绝对路径
-// @param snapName 快照名称（用于引导条目命名）
-// @throws 找不到内核或 initramfs 时调用 Fatal 退出
-func deploySnapshot(target, snapName string) {
+// DeploySnapshot 将快照的内核和 initramfs 部署到 boot 分区并生成引导条目
+func DeploySnapshot(target, snapName string) {
 	snapBoot := filepath.Join(target, "boot")
 
 	if _, err := os.Stat(snapBoot); err != nil {
@@ -129,7 +107,7 @@ func deploySnapshot(target, snapName string) {
 	fmt.Println(i18n.T("deploy.initramfs", filepath.Base(initramfs)))
 	fmt.Println(i18n.T("deploy.separator"))
 
-	bootDest := filepath.Join(bootDir, snapName)
+	bootDest := filepath.Join(BootDir, snapName)
 	os.MkdirAll(bootDest, 0o755)
 
 	copyFile(vmlinuz, filepath.Join(bootDest, "vmlinuz"))
@@ -146,21 +124,20 @@ func deploySnapshot(target, snapName string) {
 	initrdLines = append(initrdLines,
 		fmt.Sprintf("initrd /starsleep/%s/initramfs-linux.img", snapName))
 
-	// 生成 systemd-boot 引导条目配置文件
 	confName := fmt.Sprintf("starsleep-%s.conf", snapName)
-	confPath := filepath.Join(entryDir, confName)
+	confPath := filepath.Join(EntryDir, confName)
 
-	os.MkdirAll(entryDir, 0o755)
+	os.MkdirAll(EntryDir, 0o755)
 	rootUUID := detectRootUUID()
 	entry := fmt.Sprintf(`title %s - %s
 linux /starsleep/%s/vmlinuz
 %s
 options root="UUID=%s" rootflags=subvol=/%s/%s %s
 `,
-		entryTitle, snapName,
+		EntryTitle, snapName,
 		snapName,
 		strings.Join(initrdLines, "\n"),
-		rootUUID, subvolPrefix, snapName, kernelOpts)
+		rootUUID, SubvolPrefix, snapName, KernelOpts)
 
 	if err := os.WriteFile(confPath, []byte(entry), 0o644); err != nil {
 		util.Fatal(i18n.T("write.entry.failed", err))
@@ -169,13 +146,10 @@ options root="UUID=%s" rootflags=subvol=/%s/%s %s
 	fmt.Println(i18n.T("deploy.entry.generated", confPath))
 }
 
-// listBootEntries 列出所有已部署的 StarSleep 引导条目
-//
-// 扫描 entryDir 中的 starsleep-*.conf 文件，解析每个条目的 title 并打印。
 func listBootEntries() {
 	fmt.Println(i18n.T("deploy.list.header"))
 	found := false
-	entries, _ := filepath.Glob(filepath.Join(entryDir, "starsleep-*.conf"))
+	entries, _ := filepath.Glob(filepath.Join(EntryDir, "starsleep-*.conf"))
 	for _, conf := range entries {
 		found = true
 		name := filepath.Base(conf)
@@ -199,12 +173,9 @@ func listBootEntries() {
 	}
 }
 
-// removeBootEntry 删除指定快照的引导条目和启动文件
-//
-// @param snapName 快照名称
 func removeBootEntry(snapName string) {
-	conf := filepath.Join(entryDir, fmt.Sprintf("starsleep-%s.conf", snapName))
-	bootSnap := filepath.Join(bootDir, snapName)
+	conf := filepath.Join(EntryDir, fmt.Sprintf("starsleep-%s.conf", snapName))
+	bootSnap := filepath.Join(BootDir, snapName)
 
 	if _, err := os.Stat(conf); err == nil {
 		os.Remove(conf)
@@ -219,11 +190,6 @@ func removeBootEntry(snapName string) {
 	}
 }
 
-// findFile 在指定目录下按 glob 模式查找第一个匹配的文件
-//
-// @param dir 搜索目录
-// @param pattern glob 匹配模式（如 "vmlinuz-*"）
-// @return 匹配的文件路径，未找到则返回空字符串
 func findFile(dir, pattern string) string {
 	matches, err := filepath.Glob(filepath.Join(dir, pattern))
 	if err != nil || len(matches) == 0 {
@@ -232,13 +198,6 @@ func findFile(dir, pattern string) string {
 	return matches[0]
 }
 
-// copyFile 复制文件内容
-//
-// 将源文件完整读入内存后写入目标路径。
-//
-// @param src 源文件路径
-// @param dst 目标文件路径
-// @throws 读写失败时调用 Fatal 退出
 func copyFile(src, dst string) {
 	data, err := os.ReadFile(src)
 	if err != nil {
@@ -249,9 +208,6 @@ func copyFile(src, dst string) {
 	}
 }
 
-// detectRootUUID 获取当前 / 根挂载对应块设备 UUID。
-//
-// 优先使用 findmnt 的 UUID 列；若为空则回退到 SOURCE + blkid 查询。
 func detectRootUUID() string {
 	if uuid, err := util.RunSilent("findmnt", "-n", "-o", "UUID", "/"); err == nil && uuid != "" {
 		return uuid

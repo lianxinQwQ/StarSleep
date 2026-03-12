@@ -1,8 +1,7 @@
-// cmd_init.go — starsleep init 命令
+// init_env 包 — starsleep init 命令
 //
 // 初始化 StarSleep 工作环境：创建所需目录结构、检查依赖工具。
-// 必须在首次使用 starsleep build 之前运行。
-package main
+package init_env
 
 import (
 	"fmt"
@@ -15,24 +14,14 @@ import (
 	"starsleep/internal/util"
 )
 
-// cmdInit 执行环境初始化命令
-//
-// 初始化步骤:
-//  1. 检查 root 权限
-//  2. 检查所有必要的外部工具是否安装（pacstrap、btrfs 等）
-//  3. 检查 overlay 内核模块是否可加载
-//  4. 创建所有必要的目录结构
-//  5. 可选复制外部配置到默认位置
-//
-// @param args 命令行参数，支持 -c/--config 指定配置目录
-// @throws 缺少依赖时打印列表并退出
-func cmdInit(args []string) {
+// Run 执行环境初始化命令
+func Run(args []string) {
 	util.CheckRoot()
-	configDir, remaining := config.ParseConfigFlags(defaultConfigDir, args)
+	configDir, remaining := config.ParseConfigFlags(config.DefaultConfigDir, args)
 	if len(remaining) > 0 {
 		util.Fatal(i18n.T("init.unknown.arg", remaining[0]))
 	}
-	workDir := defaultWorkDir
+	workDir := config.DefaultWorkDir
 
 	// ── 检查必要的外部工具 ──
 	requiredCmds := []string{
@@ -62,14 +51,14 @@ func cmdInit(args []string) {
 
 	// ── 创建工作目录结构 ──
 	dirs := []string{
-		filepath.Join(workDir, "layers"),        // 各层 diff 数据
-		filepath.Join(workDir, "snapshots"),     // 生产快照
-		filepath.Join(workDir, "shared"),        // 共享数据根目录
-		filepath.Join(workDir, "config/layers"), // 层定义 YAML
-		filepath.Join(workDir, "config/files"),  // 叠加文件源目录
-		filepath.Join(workDir, "work/merged"),   // OverlayFS 合并挂载点
-		filepath.Join(workDir, "work/ovl_work"), // OverlayFS 工作目录
-		filepath.Join(workDir, "logs"),          // 构建日志
+		filepath.Join(workDir, "layers"),
+		filepath.Join(workDir, "snapshots"),
+		filepath.Join(workDir, "shared"),
+		filepath.Join(workDir, "config/layers"),
+		filepath.Join(workDir, "config/files"),
+		filepath.Join(workDir, "work/merged"),
+		filepath.Join(workDir, "work/ovl_work"),
+		filepath.Join(workDir, "logs"),
 	}
 	for _, d := range dirs {
 		os.MkdirAll(d, 0o755)
@@ -89,8 +78,8 @@ func cmdInit(args []string) {
 	}
 
 	// 如果指定了外部配置目录，复制到默认位置
-	if configDir != defaultConfigDir {
-		fmt.Println(i18n.T("init.copy.config", configDir, defaultConfigDir))
+	if configDir != config.DefaultConfigDir {
+		fmt.Println(i18n.T("init.copy.config", configDir, config.DefaultConfigDir))
 		if err := config.CopyConfig(configDir, filepath.Join(workDir, "config")); err != nil {
 			fmt.Fprintln(os.Stderr, i18n.T("init.copy.config.warn", err))
 		}
