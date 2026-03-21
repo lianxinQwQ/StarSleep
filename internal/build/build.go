@@ -173,6 +173,9 @@ func Run(args []string) {
 			util.Fatal(i18n.T("layer.build.failed", cfg.Name))
 		}
 
+		// 同步成功：删除备份
+		os.RemoveAll(upperBak)
+
 		// 展平
 		util.LogMsg(i18n.T("flatten.layer"), cfg.Name)
 		st, err := flatten.FlattenOverlay(flatDir, upper)

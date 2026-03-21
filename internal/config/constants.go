@@ -4,8 +4,6 @@
 // 若配置文件未定义，则回退至此处的值。
 package config
 
-
-
 const (
 	// DefaultWorkDir 默认工作目录，存放 layers、snapshots、work 等子目录
 	DefaultWorkDir = "/starsleep"
@@ -16,5 +14,3 @@ const (
 	// DefaultPkgCacheDir pacman 包缓存目录（宿主机侧，挂载进 chroot 复用）
 	DefaultPkgCacheDir = "/var/cache/pacman/pkg"
 )
-
-
