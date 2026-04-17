@@ -3,7 +3,9 @@ package helper
 
 import (
 	"fmt"
+	"path/filepath"
 
+	"starsleep/internal/config"
 	"starsleep/internal/i18n"
 	"starsleep/internal/util"
 )
@@ -12,9 +14,11 @@ import (
 func SyncParu(root string, pkgs, expectedPkgs []string) {
 	fmt.Println(i18n.T("sync.paru"))
 
+	cloneDir := filepath.Join(config.DefaultWorkDir, "shared/paru-cache")
 	paruArgs := append([]string{
 		"-u", "builder", "--",
 		"paru", "-S", "--needed", "--noconfirm",
+		"--clonedir", cloneDir,
 		"--root", root,
 	}, pkgs...)
 	if err := util.Run("runuser", paruArgs...); err != nil {

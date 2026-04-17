@@ -80,6 +80,7 @@ func Run(args []string) {
 		paruArgs := append([]string{
 			"-u", "builder", "--",
 			"paru", "-S", "--needed", "--noconfirm",
+			"--clonedir", filepath.Join(config.DefaultWorkDir, "shared/paru-cache"),
 			"--root", root,
 		}, agg.AurPkgs...)
 		if err := util.Run("runuser", paruArgs...); err != nil {
@@ -114,6 +115,8 @@ func Run(args []string) {
 				helper.ChrootCmdLive(cl.Env, cl.Commands)
 			case "chroot-pacman":
 				helper.ChrootPacmanLive(cl.Env, cl.Packages)
+			case "chroot-paru":
+				helper.ChrootParuLive(cl.Env, cl.Packages)
 			}
 		}
 	} else {

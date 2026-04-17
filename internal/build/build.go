@@ -142,9 +142,17 @@ func Run(args []string) {
 		os.MkdirAll(cacheDst, 0o755)
 		syscall.Mount(cacheSrc, cacheDst, "", syscall.MS_BIND, "")
 
+		// paru 类型额外挂载 paru 缓存
+		if cfg.Helper == "chroot-paru" {
+			paruCacheSrc := filepath.Join(workDir, "shared/paru-cache")
+			paruCacheDst := filepath.Join(merged, "home/builder/.cache/paru/clone")
+			os.MkdirAll(paruCacheDst, 0o755)
+			syscall.Mount(paruCacheSrc, paruCacheDst, "", syscall.MS_BIND, "")
+		}
+
 		// 绑定挂载虚拟文件系统
 		switch cfg.Helper {
-		case "pacstrap", "chroot-cmd", "chroot-pacman":
+		case "pacstrap", "chroot-cmd", "chroot-pacman", "chroot-paru":
 			// 这些工具内部管理 /proc /sys /dev 挂载
 		default:
 			bindVFS(merged)

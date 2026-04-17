@@ -185,7 +185,7 @@ flatten 选项:
 	"maintain.orphans.failed": "[Maintain] 警告: 清理孤立依赖失败: %v",
 
 	// ── sync.go ──
-	"sync.unknown.tool": "未知的工具: %s\n支持的工具: pacstrap, pacman, paru, enable_service",
+	"sync.unknown.tool": "未知的工具: %s\n支持的工具: pacstrap, pacman, paru, enable_service, copy_files, chroot-cmd, chroot-pacman, chroot-paru",
 	"sync.stage.done":   "[Sync] ✓ 阶段 %s 同步完成",
 	"sync.separator":    "[Sync] ─────────────────────────────────────────────",
 	"sync.stage":        "[Sync] 阶段: %s",
@@ -218,6 +218,9 @@ flatten 选项:
 	"chroot.pacman.start":  "[Chroot] 通过 arch-chroot 运行 pacman...",
 	"chroot.pacman.failed": "chroot pacman 安装失败: %v",
 	"chroot.pacman.done":   "[Chroot] ✓ 完成，共安装 %d 个包",
+	"chroot.paru.start":    "[Chroot] 通过 arch-chroot 运行 paru...",
+	"chroot.paru.failed":   "chroot paru 安装失败: %v",
+	"chroot.paru.done":     "[Chroot] ✓ paru 完成，共安装 %d 个包",
 	"chroot.env.set":       "[Chroot] 环境变量: %s=%s",
 	"chroot.env.host":      "[Chroot] 环境变量: %s ← 主机 $%s",
 	"sync.commands":        "[Sync] 命令: %d 条",

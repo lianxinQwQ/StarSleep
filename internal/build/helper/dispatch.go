@@ -29,6 +29,8 @@ func Dispatch(root, configDir string, cfg *config.LayerConfig, expectedPkgs, exp
 		SyncChrootCmd(root, cfg.Env, cfg.Commands)
 	case "chroot-pacman":
 		SyncChrootPacman(root, cfg.Env, cfg.Packages)
+	case "chroot-paru":
+		SyncChrootParu(root, cfg.Env, cfg.Packages)
 	default:
 		util.Fatal(i18n.T("sync.unknown.tool", cfg.Helper))
 	}
@@ -41,7 +43,7 @@ func printSyncHeader(cfg *config.LayerConfig, root string) {
 	fmt.Println(i18n.T("sync.tool", cfg.Helper))
 	fmt.Println(i18n.T("sync.target", root))
 	switch cfg.Helper {
-	case "pacstrap", "pacman", "paru", "chroot-pacman":
+	case "pacstrap", "pacman", "paru", "chroot-pacman", "chroot-paru":
 		fmt.Println(i18n.T("sync.packages", len(cfg.Packages)))
 	case "enable_service":
 		fmt.Println(i18n.T("sync.services", len(cfg.Services)))

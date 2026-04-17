@@ -42,7 +42,7 @@ func AggregateAll(layers []*config.LayerConfig) *AggregateResult {
 			r.ChrootLayers = append(r.ChrootLayers, ChrootStep{
 				Helper: cfg.Helper, Env: cfg.Env, Commands: cfg.Commands,
 			})
-		case "chroot-pacman":
+		case "chroot-pacman", "chroot-paru":
 			r.ChrootLayers = append(r.ChrootLayers, ChrootStep{
 				Helper: cfg.Helper, Env: cfg.Env, Packages: cfg.Packages,
 			})

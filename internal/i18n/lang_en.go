@@ -185,7 +185,7 @@ flatten options:
 	"maintain.orphans.failed": "[Maintain] Warning: failed to clean orphan deps: %v",
 
 	// ── sync.go ──
-	"sync.unknown.tool": "Unknown tool: %s\nSupported tools: pacstrap, pacman, paru, enable_service",
+	"sync.unknown.tool": "Unknown tool: %s\nSupported tools: pacstrap, pacman, paru, enable_service, copy_files, chroot-cmd, chroot-pacman, chroot-paru",
 	"sync.stage.done":   "[Sync] ✓ Stage %s sync complete",
 	"sync.separator":    "[Sync] ─────────────────────────────────────────────",
 	"sync.stage":        "[Sync] Stage: %s",
@@ -218,6 +218,9 @@ flatten options:
 	"chroot.pacman.start":  "[Chroot] Running pacman via arch-chroot...",
 	"chroot.pacman.failed": "chroot pacman installation failed: %v",
 	"chroot.pacman.done":   "[Chroot] ✓ Done, %d packages installed",
+	"chroot.paru.start":    "[Chroot] Running paru via arch-chroot...",
+	"chroot.paru.failed":   "chroot paru installation failed: %v",
+	"chroot.paru.done":     "[Chroot] ✓ paru done, %d packages installed",
 	"chroot.env.set":       "[Chroot] Env: %s=%s",
 	"chroot.env.host":      "[Chroot] Env: %s ← host $%s",
 	"sync.commands":        "[Sync] Commands: %d",

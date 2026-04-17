@@ -26,7 +26,7 @@ func SyncChrootPacman(root string, envVars []config.EnvVar, pkgs []string) {
 		}
 	}
 
-	args := []string{root, "pacman", "-S", "--needed", "--noconfirm"}
+	args := []string{root, "pacman", "-Sy", "--needed", "--noconfirm"}
 	args = append(args, pkgs...)
 
 	if err := util.RunWithEnv(resolvedEnv, "arch-chroot", args...); err != nil {
@@ -45,7 +45,7 @@ func ChrootPacmanLive(envVars []config.EnvVar, pkgs []string) {
 	resolvedEnv := config.ResolveEnv(envVars)
 	fmt.Println(i18n.T("chroot.pacman.start"))
 
-	args := []string{"-S", "--needed", "--noconfirm"}
+	args := []string{"-Sy", "--needed", "--noconfirm"}
 	args = append(args, pkgs...)
 
 	if err := util.RunWithEnv(resolvedEnv, "pacman", args...); err != nil {

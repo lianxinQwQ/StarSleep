@@ -74,6 +74,7 @@ type EnvVar struct {
 //   - copy_files: 将配置目录中的文件叠加到目标系统
 //   - chroot-cmd: 通过 arch-chroot 在目标根中执行任意命令
 //   - chroot-pacman: 通过 arch-chroot 在目标根中运行 pacman 安装包
+//   - chroot-paru: 通过 arch-chroot 在目标根中运行 paru 安装 AUR 包
 type LayerConfig struct {
 	Name     string        `yaml:"name"`
 	Helper   string        `yaml:"helper"`
