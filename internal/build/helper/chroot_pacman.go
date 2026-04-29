@@ -26,7 +26,7 @@ func SyncChrootPacman(root string, envVars []config.EnvVar, pkgs []string) {
 		}
 	}
 
-	args := []string{root, "pacman", "-Sy", "--needed", "--noconfirm"}
+	args := []string{root, "pacman", "-S", "--needed", "--noconfirm"}
 	args = append(args, pkgs...)
 
 	if err := util.RunWithEnv(resolvedEnv, "arch-chroot", args...); err != nil {

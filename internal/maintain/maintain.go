@@ -77,10 +77,14 @@ func Run(args []string) {
 	// 3. 安装 AUR 包
 	if len(agg.AurPkgs) > 0 {
 		fmt.Println(i18n.T("maintain.step3"))
+		helper.EnsureBuilderUser()
+		paruCache := filepath.Join(config.DefaultWorkDir, "shared/paru-cache")
+		// 确保 paru 缓存目录归属 builder，防止 git safe.directory 检查失败
+		util.Run("chown", "-R", "builder:builder", paruCache)
 		paruArgs := append([]string{
 			"-u", "builder", "--",
 			"paru", "-S", "--needed", "--noconfirm",
-			"--clonedir", filepath.Join(config.DefaultWorkDir, "shared/paru-cache"),
+			"--clonedir", paruCache,
 			"--root", root,
 		}, agg.AurPkgs...)
 		if err := util.Run("runuser", paruArgs...); err != nil {

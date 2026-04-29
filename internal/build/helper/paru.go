@@ -3,6 +3,7 @@ package helper
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"starsleep/internal/config"
@@ -14,7 +15,16 @@ import (
 func SyncParu(root string, pkgs, expectedPkgs []string) {
 	fmt.Println(i18n.T("sync.paru"))
 
+	ensureBuilderLive()
+
+	// 清除宿主机和目标根的残留 pacman 锁文件，防止 libalpm 初始化失败
+	os.Remove("/var/lib/pacman/db.lck")
+	os.Remove(filepath.Join(root, "var/lib/pacman/db.lck"))
+
+	// 确保 paru 缓存目录及其中所有克隆仓库归属 builder，
+	// 防止 git 的 safe.directory 检查因目录所有者与运行用户不同而失败
 	cloneDir := filepath.Join(config.DefaultWorkDir, "shared/paru-cache")
+	util.Run("chown", "-R", "builder:builder", cloneDir)
 	paruArgs := append([]string{
 		"-u", "builder", "--",
 		"paru", "-S", "--needed", "--noconfirm",
