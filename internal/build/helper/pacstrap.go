@@ -11,14 +11,14 @@ import (
 )
 
 // SyncPacstrap 使用 pacstrap 初始化或增量同步基础系统
-func SyncPacstrap(root string, pkgs, expectedPkgs []string) {
+func SyncPacstrap(root, dbPath string, pkgs, expectedPkgs []string) {
 	fmt.Println(i18n.T("sync.pacstrap"))
 	os.MkdirAll(root, 0o755)
 
-	alpmDB := filepath.Join(root, "var/lib/pacman/local/ALPM_DB_VERSION")
+	alpmDB := filepath.Join(root, dbPath, "local/ALPM_DB_VERSION")
 	if _, err := os.Stat(alpmDB); err == nil {
 		fmt.Println(i18n.T("sync.incremental"))
-		SyncWithPacman(root, pkgs, expectedPkgs)
+		SyncWithPacman(root, dbPath, pkgs, expectedPkgs)
 		return
 	}
 

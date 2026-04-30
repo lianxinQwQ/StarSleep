@@ -13,4 +13,6 @@ const (
 	DefaultSnapshotDir = "/starsleep/snapshots"
 	// DefaultPkgCacheDir pacman 包缓存目录（宿主机侧，挂载进 chroot 复用）
 	DefaultPkgCacheDir = "/var/cache/pacman/pkg"
+	// DefaultDBPath pacman 数据库路径（相对于目标根目录）
+	DefaultDBPath = "var/lib/pacman"
 )

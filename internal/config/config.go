@@ -33,6 +33,7 @@ type MetaConfig struct {
 	WorkDir     string `yaml:"work_dir,omitempty"`
 	SnapshotDir string `yaml:"snapshot_dir,omitempty"`
 	PkgCache    string `yaml:"pkg_cache,omitempty"`
+	DBPath      string `yaml:"db_path,omitempty"`
 }
 
 // MainConfig 表示 config.yaml 的顶层结构
@@ -252,6 +253,14 @@ func ResolveSnapshotDir(mc *MainConfig, defaultVal string) string {
 func ResolvePkgCache(mc *MainConfig, defaultVal string) string {
 	if mc != nil && mc.Meta.PkgCache != "" {
 		return mc.Meta.PkgCache
+	}
+	return defaultVal
+}
+
+// ResolveDBPath 解析 pacman 数据库路径（相对于目标根目录），优先使用配置文件中的值
+func ResolveDBPath(mc *MainConfig, defaultVal string) string {
+	if mc != nil && mc.Meta.DBPath != "" {
+		return mc.Meta.DBPath
 	}
 	return defaultVal
 }

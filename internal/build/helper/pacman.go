@@ -13,9 +13,9 @@ import (
 )
 
 // CleanupPacman 声明式清理：降级多余显式包为依赖 → 循环清理孤立包
-func CleanupPacman(root string, expectedPkgs []string) {
+func CleanupPacman(root, dbPath string, expectedPkgs []string) {
 	expectedSet := pkgmgr.ExpandPkgGroups(expectedPkgs)
-	dbPath := filepath.Join(root, "var/lib/pacman")
+	absDBPath := filepath.Join(root, dbPath)
 	explicitPkgs, err := pkgmgr.ListExplicitPkgs(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.T("sync.query.failed", err))
@@ -23,7 +23,7 @@ func CleanupPacman(root string, expectedPkgs []string) {
 		for _, pkg := range explicitPkgs {
 			if !expectedSet[pkg] {
 				fmt.Println(i18n.T("sync.demote", pkg))
-				util.RunSilent("pacman", "--root", root, "--dbpath", dbPath,
+				util.RunSilent("pacman", "--root", root, "--dbpath", absDBPath,
 					"-D", "--asdeps", pkg, "--noconfirm")
 			}
 		}
@@ -35,7 +35,7 @@ func CleanupPacman(root string, expectedPkgs []string) {
 		}
 		fmt.Println(i18n.T("sync.orphans", strings.Join(orphans, " ")))
 		args := append([]string{
-			"--root", root, "--dbpath", dbPath,
+			"--root", root, "--dbpath", absDBPath,
 			"-Rs", "--noconfirm",
 		}, orphans...)
 		if err := util.Run("pacman", args...); err != nil {
@@ -46,12 +46,12 @@ func CleanupPacman(root string, expectedPkgs []string) {
 }
 
 // SyncWithPacman 确保目标系统的显式安装包列表与配置一致
-func SyncWithPacman(root string, installPkgs, expectedPkgs []string) {
-	dbPath := filepath.Join(root, "var/lib/pacman")
-	CleanupPacman(root, expectedPkgs)
+func SyncWithPacman(root, dbPath string, installPkgs, expectedPkgs []string) {
+	absDBPath := filepath.Join(root, dbPath)
+	CleanupPacman(root, dbPath, expectedPkgs)
 	fmt.Println(i18n.T("sync.install.pkgs"))
 	args := append([]string{
-		"--root", root, "--dbpath", dbPath,
+		"--root", root, "--dbpath", absDBPath,
 		"--config", "/etc/pacman.conf",
 		"-S", "--needed", "--noconfirm",
 	}, installPkgs...)
@@ -61,7 +61,7 @@ func SyncWithPacman(root string, installPkgs, expectedPkgs []string) {
 }
 
 // SyncPacman 使用 pacman 同步官方仓库软件包
-func SyncPacman(root string, pkgs, expectedPkgs []string) {
+func SyncPacman(root, dbPath string, pkgs, expectedPkgs []string) {
 	fmt.Println(i18n.T("sync.pacman"))
-	SyncWithPacman(root, pkgs, expectedPkgs)
+	SyncWithPacman(root, dbPath, pkgs, expectedPkgs)
 }

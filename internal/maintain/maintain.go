@@ -24,7 +24,7 @@ func Run(args []string) {
 		util.Fatal(i18n.T("maintain.unknown.arg", remaining[0]))
 	}
 
-	layers, _, err := config.LoadAllLayers(configDir)
+	layers, mainCfg, err := config.LoadAllLayers(configDir)
 	if err != nil {
 		util.Fatal(i18n.T("load.config.failed", err))
 	}
@@ -45,7 +45,7 @@ func Run(args []string) {
 	fmt.Println(i18n.T("maintain.separator"))
 
 	root := "/"
-	dbPath := filepath.Join(root, "var/lib/pacman")
+	dbPath := filepath.Join(root, config.ResolveDBPath(mainCfg, config.DefaultDBPath))
 	currentSnap := detectCurrentSnapshot()
 	ts := util.Timestamp()
 

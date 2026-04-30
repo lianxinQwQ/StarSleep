@@ -96,6 +96,7 @@ func Run(args []string) {
 	util.LogMsg(i18n.T("build.time"), ts)
 	util.LogMsg(i18n.T("stage.count"), len(layers))
 
+	dbPath := config.ResolveDBPath(mainCfg, config.DefaultDBPath)
 	// 初始化展平子卷
 	if isBtrfsSubvolume(flatDir) {
 		util.Run("btrfs", "subvolume", "delete", flatDir)
@@ -161,7 +162,7 @@ func Run(args []string) {
 		// 调用同步
 		expectedPkgs := config.BuildCumulativePkgs(layers, i)
 		expectedSvcs := config.BuildCumulativeServices(layers, i)
-		layerOk := runSyncSafe(merged, configDir, cfg, expectedPkgs, expectedSvcs)
+		layerOk := runSyncSafe(merged, configDir, dbPath, cfg, expectedPkgs, expectedSvcs)
 
 		// 卸载
 		syscall.Sync()
@@ -290,7 +291,7 @@ func isBtrfsSubvolume(path string) bool {
 }
 
 // runSyncSafe 安全地调用 helper.Dispatch，捕获 fatal panic 并返回是否成功
-func runSyncSafe(root, configDir string, cfg *config.LayerConfig, expectedPkgs, expectedSvcs []string) (ok bool) {
+func runSyncSafe(root, configDir, dbPath string, cfg *config.LayerConfig, expectedPkgs, expectedSvcs []string) (ok bool) {
 	oldMode := util.FatalPanicMode
 	util.FatalPanicMode = true
 	defer func() {
@@ -304,7 +305,7 @@ func runSyncSafe(root, configDir string, cfg *config.LayerConfig, expectedPkgs, 
 			ok = false
 		}
 	}()
-	helper.Dispatch(root, configDir, cfg, expectedPkgs, expectedSvcs)
+	helper.Dispatch(root, configDir, dbPath, cfg, expectedPkgs, expectedSvcs)
 	return true
 }
 
