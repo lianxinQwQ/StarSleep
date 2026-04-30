@@ -55,7 +55,8 @@ func Run(args []string) {
 
 	switch mode {
 	case compareModePackages:
-		Packages(layers, configDir, verbose)
+		dbPath := config.ResolveDBPath(mainCfg, config.DefaultDBPath)
+		Packages(layers, configDir, dbPath, verbose)
 	case compareModeFiles:
 		Files(filesTarget, config.DefaultWorkDir, func(snapshotDir string) {
 			build.ApplyInheritList(mainCfg, snapshotDir)

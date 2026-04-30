@@ -16,7 +16,7 @@ import (
 func CleanupPacman(root, dbPath string, expectedPkgs []string) {
 	expectedSet := pkgmgr.ExpandPkgGroups(expectedPkgs)
 	absDBPath := filepath.Join(root, dbPath)
-	explicitPkgs, err := pkgmgr.ListExplicitPkgs(root)
+	explicitPkgs, err := pkgmgr.ListExplicitPkgs(root, dbPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.T("sync.query.failed", err))
 	} else {
@@ -29,7 +29,7 @@ func CleanupPacman(root, dbPath string, expectedPkgs []string) {
 		}
 	}
 	for {
-		orphans, err := pkgmgr.ListOrphans(root)
+		orphans, err := pkgmgr.ListOrphans(root, dbPath)
 		if err != nil || len(orphans) == 0 {
 			break
 		}

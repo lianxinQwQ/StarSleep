@@ -29,7 +29,7 @@ import (
 // @param layers 所有层配置
 // @param configDir 配置目录路径
 // @param verbose 是否启用详细模式
-func Packages(layers []*config.LayerConfig, configDir string, verbose bool) {
+func Packages(layers []*config.LayerConfig, configDir, dbPath string, verbose bool) {
 	fmt.Println(i18n.T("compare.separator"))
 	fmt.Println(i18n.T("compare.pkg.title"))
 	fmt.Println(i18n.T("compare.config.dir", configDir))
@@ -66,7 +66,7 @@ func Packages(layers []*config.LayerConfig, configDir string, verbose bool) {
 	// ── 查询当前系统的包列表 ──
 
 	// 显式安装包（主动安装）
-	explicitPkgs, err := pkgmgr.ListExplicitPkgs("/")
+	explicitPkgs, err := pkgmgr.ListExplicitPkgs("/", dbPath)
 	if err != nil {
 		util.Fatal(i18n.T("compare.query.failed", err))
 	}
@@ -76,7 +76,7 @@ func Packages(layers []*config.LayerConfig, configDir string, verbose bool) {
 	}
 
 	// 全量已安装包（包含依赖安装的）
-	allInstalled, err := pkgmgr.ListInstalledPkgs("/")
+	allInstalled, err := pkgmgr.ListInstalledPkgs("/", dbPath)
 	if err != nil {
 		util.Fatal(i18n.T("compare.query.failed", err))
 	}

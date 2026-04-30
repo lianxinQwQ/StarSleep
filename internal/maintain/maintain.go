@@ -2,6 +2,7 @@
 package maintain
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,8 +21,18 @@ func Run(args []string) {
 	util.CheckRoot()
 
 	configDir, remaining := config.ParseConfigFlags(config.DefaultConfigDir, args)
-	if len(remaining) > 0 {
-		util.Fatal(i18n.T("maintain.unknown.arg", remaining[0]))
+
+	disauto := false
+	var filtered []string
+	for _, a := range remaining {
+		if a == "--disauto" {
+			disauto = true
+		} else {
+			filtered = append(filtered, a)
+		}
+	}
+	if len(filtered) > 0 {
+		util.Fatal(i18n.T("maintain.unknown.arg", filtered[0]))
 	}
 
 	layers, mainCfg, err := config.LoadAllLayers(configDir)
@@ -45,7 +56,8 @@ func Run(args []string) {
 	fmt.Println(i18n.T("maintain.separator"))
 
 	root := "/"
-	dbPath := filepath.Join(root, config.ResolveDBPath(mainCfg, config.DefaultDBPath))
+	dbPath := config.ResolveDBPath(mainCfg, config.DefaultDBPath)
+	absDBPath := filepath.Join(root, dbPath)
 	currentSnap := detectCurrentSnapshot()
 	ts := util.Timestamp()
 
@@ -59,11 +71,17 @@ func Run(args []string) {
 
 	// 1. 清理
 	fmt.Println(i18n.T("maintain.step1"))
-	maintainCleanup(root, dbPath, allPkgs)
+	maintainCleanup(root, dbPath, absDBPath, allPkgs, disauto)
 
 	// 2. 安装官方仓库包
 	if len(agg.OfficialPkgs) > 0 {
 		fmt.Println(i18n.T("maintain.step2"))
+		if disauto {
+			fmt.Println(i18n.T("maintain.confirm.install", strings.Join(agg.OfficialPkgs, " ")))
+			if !confirmPrompt() {
+				util.Fatal(i18n.T("maintain.aborted"))
+			}
+		}
 		args := append([]string{
 			"-S", "--needed", "--noconfirm",
 		}, agg.OfficialPkgs...)
@@ -77,6 +95,12 @@ func Run(args []string) {
 	// 3. 安装 AUR 包
 	if len(agg.AurPkgs) > 0 {
 		fmt.Println(i18n.T("maintain.step3"))
+		if disauto {
+			fmt.Println(i18n.T("maintain.confirm.install", strings.Join(agg.AurPkgs, " ")))
+			if !confirmPrompt() {
+				util.Fatal(i18n.T("maintain.aborted"))
+			}
+		}
 		helper.EnsureBuilderUser()
 		paruCache := filepath.Join(config.DefaultWorkDir, "shared/paru-cache")
 		// 确保 paru 缓存目录归属 builder，防止 git safe.directory 检查失败
@@ -165,10 +189,10 @@ func detectCurrentSnapshot() string {
 	return ""
 }
 
-func maintainCleanup(root, dbPath string, expectedPkgs []string) {
+func maintainCleanup(root, dbPath, absDBPath string, expectedPkgs []string, disauto bool) {
 	expectedSet := pkgmgr.ExpandPkgGroups(expectedPkgs)
 
-	explicitPkgs, err := pkgmgr.ListExplicitPkgs(root)
+	explicitPkgs, err := pkgmgr.ListExplicitPkgs(root, dbPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.T("maintain.query.failed", err))
 	} else {
@@ -180,22 +204,43 @@ func maintainCleanup(root, dbPath string, expectedPkgs []string) {
 		}
 		if len(demote) > 0 {
 			fmt.Println(i18n.T("maintain.demote", len(demote), strings.Join(demote, " ")))
+			if disauto {
+				fmt.Println(i18n.T("maintain.confirm.demote"))
+				if !confirmPrompt() {
+					util.Fatal(i18n.T("maintain.aborted"))
+				}
+			}
 			for _, pkg := range demote {
-				util.RunSilent("pacman", "--dbpath", dbPath, "-D", "--asdeps", pkg, "--noconfirm")
+				util.RunSilent("pacman", "--dbpath", absDBPath, "-D", "--asdeps", pkg, "--noconfirm")
 			}
 		}
 	}
 
 	for {
-		orphans, err := pkgmgr.ListOrphans(root)
+		orphans, err := pkgmgr.ListOrphans(root, dbPath)
 		if err != nil || len(orphans) == 0 {
 			break
 		}
 		fmt.Println(i18n.T("maintain.orphans", strings.Join(orphans, " ")))
+		if disauto {
+			fmt.Println(i18n.T("maintain.confirm.orphans"))
+			if !confirmPrompt() {
+				util.Fatal(i18n.T("maintain.aborted"))
+			}
+		}
 		args := append([]string{"-Rs", "--noconfirm"}, orphans...)
 		if err := util.Run("pacman", args...); err != nil {
 			fmt.Fprintln(os.Stderr, i18n.T("maintain.orphans.failed", err))
 			break
 		}
 	}
+}
+
+// confirmPrompt 向终端打印提示并读取用户输入，返回是否确认
+func confirmPrompt() bool {
+	fmt.Print(i18n.T("maintain.confirm.prompt"))
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
+	return answer == "y" || answer == "yes"
 }

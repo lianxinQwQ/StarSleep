@@ -10,7 +10,7 @@ import (
 )
 
 // SyncChrootPacman 通过 arch-chroot 在目标根中使用 pacman 安装软件包
-func SyncChrootPacman(root string, envVars []config.EnvVar, pkgs []string) {
+func SyncChrootPacman(root, dbPath string, envVars []config.EnvVar, pkgs []string) {
 	if len(pkgs) == 0 {
 		return
 	}
@@ -26,7 +26,9 @@ func SyncChrootPacman(root string, envVars []config.EnvVar, pkgs []string) {
 		}
 	}
 
-	args := []string{root, "pacman", "-S", "--needed", "--noconfirm"}
+	// 在 chroot 内部，dbPath 就是以 / 为根的绝对路径
+	chrootDBPath := "/" + dbPath
+	args := []string{root, "pacman", "--dbpath", chrootDBPath, "-S", "--needed", "--noconfirm"}
 	args = append(args, pkgs...)
 
 	if err := util.RunWithEnv(resolvedEnv, "arch-chroot", args...); err != nil {

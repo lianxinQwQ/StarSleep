@@ -12,7 +12,7 @@ import (
 )
 
 // ensureBuilderChroot 确保 chroot 内存在 builder 用户并属于 wheel 组，且配置免密 sudo
-func ensureBuilderChroot(env []string, root string) {
+func ensureBuilderChroot(env []string, root, dbPath string) {
 	// 先确保 builder 主组存在（防止 chown builder:builder 失败）
 	util.RunWithEnv(env, "arch-chroot", root, "groupadd", "-f", "builder")
 	// 检查用户是否存在
@@ -34,7 +34,7 @@ func ensureBuilderChroot(env []string, root string) {
 	util.RunWithEnv(env, "arch-chroot", root,
 		"chown", "-R", "builder:builder", "/home/builder")
 	// 清除 chroot 内残留 pacman 锁文件，防止 paru 初始化 libalpm 失败
-	os.Remove(filepath.Join(root, "var/lib/pacman/db.lck"))
+	os.Remove(filepath.Join(root, dbPath, "db.lck"))
 }
 func ensureBuilderLive() {
 	if _, err := util.RunSilent("id", "builder"); err != nil {
@@ -71,7 +71,7 @@ func EnsureBuilderUser() {
 }
 
 // SyncChrootParu 通过 arch-chroot 在目标根中使用 paru 安装 AUR 软件包
-func SyncChrootParu(root string, envVars []config.EnvVar, pkgs []string) {
+func SyncChrootParu(root, dbPath string, envVars []config.EnvVar, pkgs []string) {
 	if len(pkgs) == 0 {
 		return
 	}
@@ -87,7 +87,7 @@ func SyncChrootParu(root string, envVars []config.EnvVar, pkgs []string) {
 		}
 	}
 
-	ensureBuilderChroot(resolvedEnv, root)
+	ensureBuilderChroot(resolvedEnv, root, dbPath)
 
 	args := []string{root, "runuser", "-u", "builder", "--",
 		"paru", "-S", "--needed", "--noconfirm"}

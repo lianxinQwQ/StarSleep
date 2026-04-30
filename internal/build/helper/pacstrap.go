@@ -27,4 +27,12 @@ func SyncPacstrap(root, dbPath string, pkgs, expectedPkgs []string) {
 	if err := util.Run("pacstrap", args...); err != nil {
 		util.Fatal(i18n.T("pacstrap.failed", err))
 	}
+	// pacstrap 始终将数据库写入默认位置；若配置了自定义路径，则移至目标位置
+	defaultDB := filepath.Join(root, "var/lib/pacman")
+	customDB := filepath.Join(root, dbPath)
+	if defaultDB != customDB {
+		if err := os.Rename(defaultDB, customDB); err != nil {
+			util.Fatal(i18n.T("pacstrap.failed", err))
+		}
+	}
 }

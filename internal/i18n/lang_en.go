@@ -36,6 +36,9 @@ compare options:
   --files <target-dir>   Compare files between latest snapshot and target directory
   -v, --verbose          Verbose output (show group status, no-diff hints, etc.)
 
+maintain options:
+  --disauto   prompt for confirmation before demoting/installing
+
 flatten options:
   --list              List deployed boot entries
   --remove <name>     Remove boot entry
@@ -183,6 +186,11 @@ flatten options:
 	"maintain.demote":         "[Maintain] Demoting %d packages to deps: %s",
 	"maintain.orphans":        "[Maintain] Cleaning orphan deps: %s",
 	"maintain.orphans.failed": "[Maintain] Warning: failed to clean orphan deps: %v",
+	"maintain.confirm.demote":  "[Maintain] The above packages will be demoted to deps, continue?",
+	"maintain.confirm.orphans": "[Maintain] The above orphan deps will be removed, continue?",
+	"maintain.confirm.install": "[Maintain] Packages to install: %s",
+	"maintain.confirm.prompt":  "Continue? [y/N] ",
+	"maintain.aborted":         "operation aborted by user",
 
 	// ── sync.go ──
 	"sync.unknown.tool": "Unknown tool: %s\nSupported tools: pacstrap, pacman, paru, enable_service, copy_files, chroot-cmd, chroot-pacman, chroot-paru",

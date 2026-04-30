@@ -28,9 +28,9 @@ func Dispatch(root, configDir, dbPath string, cfg *config.LayerConfig, expectedP
 	case "chroot-cmd":
 		SyncChrootCmd(root, cfg.Env, cfg.Commands)
 	case "chroot-pacman":
-		SyncChrootPacman(root, cfg.Env, cfg.Packages)
+		SyncChrootPacman(root, dbPath, cfg.Env, cfg.Packages)
 	case "chroot-paru":
-		SyncChrootParu(root, cfg.Env, cfg.Packages)
+		SyncChrootParu(root, dbPath, cfg.Env, cfg.Packages)
 	default:
 		util.Fatal(i18n.T("sync.unknown.tool", cfg.Helper))
 	}

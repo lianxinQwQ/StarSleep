@@ -36,6 +36,9 @@ compare 选项:
   --files <目标目录>     基于最新快照与指定目录对比文件差异
   -v, --verbose          详细输出 (显示包组状态、无差异提示等)
 
+maintain 选项:
+  --disauto   降级/安装前要求用户确认
+
 flatten 选项:
   --list              列出已部署的引导条目
   --remove <名称>     移除引导条目
@@ -183,6 +186,11 @@ flatten 选项:
 	"maintain.demote":         "[Maintain] 降级 %d 个包为依赖: %s",
 	"maintain.orphans":        "[Maintain] 清理孤立依赖: %s",
 	"maintain.orphans.failed": "[Maintain] 警告: 清理孤立依赖失败: %v",
+	"maintain.confirm.demote":  "[Maintain] 以上包将被降级为依赖，是否继续？",
+	"maintain.confirm.orphans": "[Maintain] 以上孤立依赖将被移除，是否继续？",
+	"maintain.confirm.install": "[Maintain] 将安装以下包: %s",
+	"maintain.confirm.prompt":  "继续？ [y/N] ",
+	"maintain.aborted":         "用户取消操作",
 
 	// ── sync.go ──
 	"sync.unknown.tool": "未知的工具: %s\n支持的工具: pacstrap, pacman, paru, enable_service, copy_files, chroot-cmd, chroot-pacman, chroot-paru",

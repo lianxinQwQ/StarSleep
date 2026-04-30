@@ -21,9 +21,8 @@ import (
 //
 // @param root 目标根目录路径
 // @return ALPM 句柄和可能的错误
-func openHandle(root string) (*alpm.Handle, error) {
-	dbPath := filepath.Join(root, "var/lib/pacman")
-	h, err := alpm.Initialize(root, dbPath)
+func openHandle(root, dbPath string) (*alpm.Handle, error) {
+	h, err := alpm.Initialize(root, filepath.Join(root, dbPath))
 	if err != nil {
 		return nil, fmt.Errorf(i18n.T("alpm.init"), err)
 	}
@@ -37,8 +36,8 @@ func openHandle(root string) (*alpm.Handle, error) {
 //
 // @param root 目标根目录路径
 // @return 显式安装的包名切片和可能的错误
-func ListExplicitPkgs(root string) ([]string, error) {
-	h, err := openHandle(root)
+func ListExplicitPkgs(root, dbPath string) ([]string, error) {
+	h, err := openHandle(root, dbPath)
 	if err != nil {
 		return nil, err
 	}
@@ -64,8 +63,8 @@ func ListExplicitPkgs(root string) ([]string, error) {
 //
 // @param root 目标根目录路径
 // @return 已安装包名切片和可能的错误
-func ListInstalledPkgs(root string) ([]string, error) {
-	h, err := openHandle(root)
+func ListInstalledPkgs(root, dbPath string) ([]string, error) {
+	h, err := openHandle(root, dbPath)
 	if err != nil {
 		return nil, err
 	}
@@ -88,10 +87,9 @@ func ListInstalledPkgs(root string) ([]string, error) {
 //
 // @param root 目标根目录路径
 // @return 孤立包名切片，无孤立包时返回 nil
-func ListOrphans(root string) ([]string, error) {
-	dbPath := filepath.Join(root, "var/lib/pacman")
+func ListOrphans(root, dbPath string) ([]string, error) {
 	output, err := util.RunSilent("pacman",
-		"--root", root, "--dbpath", dbPath, "-Qtdq")
+		"--root", root, "--dbpath", filepath.Join(root, dbPath), "-Qtdq")
 	if err != nil || strings.TrimSpace(output) == "" {
 		return nil, nil
 	}
