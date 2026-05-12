@@ -1,0 +1,17 @@
+# tools.yaml — 基础 CLI 工具
+name: tools
+helper: pacman
+packages:
+  - vim
+  - curl
+  - wget
+  - git
+  - bash-completion
+  - rsync
+  - htop
+  - neofetch
+  - man-db
+  - man-pages
+  - sudo
+  - networkmanager
+  - openssh

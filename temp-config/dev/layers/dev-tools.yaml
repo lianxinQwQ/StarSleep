@@ -1,0 +1,28 @@
+# dev-tools.yaml — 开发工具链
+name: dev-tools
+helper: pacman
+packages:
+  # 编译器与构建工具
+  - base-devel
+  - gcc
+  - clang
+  - lld
+  - cmake
+  - ninja
+  - make
+  - pkgconf
+  - meson
+
+  # 语言运行时
+  - go
+  - rust
+  - python
+  - python-pip
+  - nodejs
+  - npm
+
+  # 开发辅助
+  - git-lfs
+  - shellcheck
+  - ctags
+  - lazygit

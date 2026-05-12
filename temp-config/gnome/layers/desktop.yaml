@@ -1,0 +1,33 @@
+# desktop.yaml — GNOME 桌面环境
+name: desktop
+helper: pacman
+packages:
+  # GNOME 桌面核心
+  - gnome
+  - gnome-extra
+  - gnome-tweaks
+  - gdm
+
+  # 常用应用
+  - firefox
+  - firefox-i18n-zh-cn
+  - gnome-terminal
+  - nautilus
+  - file-roller
+  - evince
+  - eog
+  - gedit
+
+  # 中文字体与输入法
+  - noto-fonts-cjk
+  - noto-fonts-emoji
+  - fcitx5
+  - fcitx5-configtool
+  - fcitx5-gtk
+  - fcitx5-qt
+
+  # 多媒体
+  - gst-plugins-good
+  - gst-plugins-bad
+  - gst-plugins-ugly
+  - gst-libav

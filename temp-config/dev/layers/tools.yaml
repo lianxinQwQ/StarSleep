@@ -1,0 +1,18 @@
+# tools.yaml — 常用系统工具
+name: tools
+helper: pacman
+packages:
+  - vim
+  - curl
+  - wget
+  - git
+  - bash-completion
+  - rsync
+  - htop
+  - man-db
+  - man-pages
+  - networkmanager
+  - openssh
+  - tmux
+  - ripgrep
+  - fd

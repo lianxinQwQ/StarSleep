@@ -1,0 +1,7 @@
+# services.yaml — 基本系统服务
+name: services
+helper: enable_service
+services:
+  - NetworkManager.service
+  - sshd.service
+  - systemd-timesyncd.service

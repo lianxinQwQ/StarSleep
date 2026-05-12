@@ -1,0 +1,26 @@
+# config.yaml — StarSleep 预设配置 (gnome)
+# GNOME 桌面环境，适合日常办公场景
+
+meta:
+  work_dir: /starsleep
+  snapshot_dir: /starsleep/snapshots
+  pkg_cache: /var/cache/pacman/pkg
+  db_path: var/lib/pacman
+
+layers:
+  - base.yaml
+  - desktop.yaml
+  - tools.yaml
+  - services.yaml
+
+inherit:
+  - /etc/passwd
+  - /etc/shadow
+  - /etc/group
+  - /etc/localtime
+  - /etc/locale.conf
+  - /etc/locale.gen
+  - /etc/pacman.d/mirrorlist
+  - /etc/pacman.conf
+  - /etc/hosts
+  - /etc/ssh

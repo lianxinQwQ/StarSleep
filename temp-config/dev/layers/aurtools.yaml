@@ -1,0 +1,7 @@
+# aurtools.yaml — AUR 工具
+name: aurtools
+helper: paru
+packages:
+  - paru
+  - visual-studio-code-bin
+  - nerd-fonts-complete

@@ -1,0 +1,14 @@
+# base.yaml — 基础系统层
+- name: base
+  helper: pacstrap
+  packages:
+    - base
+    - linux
+    - linux-firmware
+    - btrfs-progs
+    - dosfstools
+
+- name: keyring
+  helper: chroot-pacman
+  packages:
+    - archlinux-keyring
