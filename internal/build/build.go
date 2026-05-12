@@ -305,5 +305,3 @@ func runSyncSafe(root, configDir, dbPath string, cfg *config.LayerConfig, expect
 	helper.Dispatch(root, configDir, dbPath, cfg, expectedPkgs, expectedSvcs)
 	return true
 }
-
-
