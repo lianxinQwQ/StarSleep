@@ -2,8 +2,8 @@
 package compare
 
 import (
-	"starsleep/internal/build"
 	"starsleep/internal/config"
+	"starsleep/internal/deploy"
 	"starsleep/internal/i18n"
 	"starsleep/internal/util"
 )
@@ -59,7 +59,7 @@ func Run(args []string) {
 		Packages(layers, configDir, dbPath, verbose)
 	case compareModeFiles:
 		Files(filesTarget, config.DefaultWorkDir, func(snapshotDir string) {
-			build.ApplyInheritList(mainCfg, snapshotDir)
+			deploy.ApplyInheritList(mainCfg, snapshotDir)
 		})
 	}
 }

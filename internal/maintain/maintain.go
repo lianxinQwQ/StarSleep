@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"starsleep/internal/build/helper"
+	"starsleep/internal/compare"
 	"starsleep/internal/config"
 	"starsleep/internal/deploy"
 	"starsleep/internal/i18n"
@@ -42,22 +43,26 @@ func Run(args []string) {
 
 	agg := AggregateAll(layers)
 
+	// 统一期望包集合：所有 helper 类型的包合并
 	allPkgs := make([]string, 0, len(agg.OfficialPkgs)+len(agg.AurPkgs))
 	allPkgs = append(allPkgs, agg.OfficialPkgs...)
 	allPkgs = append(allPkgs, agg.AurPkgs...)
+	for _, cl := range agg.ChrootLayers {
+		allPkgs = append(allPkgs, cl.Packages...)
+	}
 
 	fmt.Println(i18n.T("maintain.separator"))
 	fmt.Println(i18n.T("maintain.title"))
 	fmt.Println(i18n.T("maintain.config.dir", configDir))
 	fmt.Println(i18n.T("maintain.layer.count", len(layers)))
-	fmt.Println(i18n.T("maintain.official.pkgs", len(agg.OfficialPkgs)))
-	fmt.Println(i18n.T("maintain.aur.pkgs", len(agg.AurPkgs)))
+	fmt.Println(i18n.T("maintain.total.pkgs", len(allPkgs)))
 	fmt.Println(i18n.T("maintain.services.count", len(agg.Services)))
 	fmt.Println(i18n.T("maintain.separator"))
 
 	root := "/"
 	dbPath := config.ResolveDBPath(mainCfg, config.DefaultDBPath)
 	absDBPath := filepath.Join(root, dbPath)
+	paruCache := filepath.Join(config.DefaultWorkDir, "shared/paru-cache")
 	currentSnap := detectCurrentSnapshot()
 	ts := util.Timestamp()
 
@@ -69,56 +74,51 @@ func Run(args []string) {
 		util.Fatal(i18n.T("snapshot.failed", err))
 	}
 
-	// 1. 清理
+	// 步骤 1：降级多余显式包
 	fmt.Println(i18n.T("maintain.step1"))
-	maintainCleanup(root, dbPath, absDBPath, allPkgs, disauto)
+	diff, err := compare.ComputePkgDiff(allPkgs, root, dbPath)
+	if err != nil {
+		util.Fatal(i18n.T("maintain.query.failed", err))
+	}
+	maintainDemote(absDBPath, diff.Extra, disauto)
 
-	// 2. 安装官方仓库包
-	if len(agg.OfficialPkgs) > 0 {
+	// 步骤 2：安装缺失包（paru 统一处理官方 + AUR）
+	if len(diff.Missing) > 0 {
 		fmt.Println(i18n.T("maintain.step2"))
 		if disauto {
-			fmt.Println(i18n.T("maintain.confirm.install", strings.Join(agg.OfficialPkgs, " ")))
-			if !confirmPrompt() {
-				util.Fatal(i18n.T("maintain.aborted"))
-			}
-		}
-		args := append([]string{
-			"-S", "--needed", "--noconfirm",
-		}, agg.OfficialPkgs...)
-		if err := util.Run("pacman", args...); err != nil {
-			util.Fatal(i18n.T("pacman.failed", err))
-		}
-	} else {
-		fmt.Println(i18n.T("maintain.step2.skip"))
-	}
-
-	// 3. 安装 AUR 包
-	if len(agg.AurPkgs) > 0 {
-		fmt.Println(i18n.T("maintain.step3"))
-		if disauto {
-			fmt.Println(i18n.T("maintain.confirm.install", strings.Join(agg.AurPkgs, " ")))
+			fmt.Println(i18n.T("maintain.confirm.install", strings.Join(diff.Missing, " ")))
 			if !confirmPrompt() {
 				util.Fatal(i18n.T("maintain.aborted"))
 			}
 		}
 		helper.EnsureBuilderUser()
-		paruCache := filepath.Join(config.DefaultWorkDir, "shared/paru-cache")
-		// 确保 paru 缓存目录归属 builder，防止 git safe.directory 检查失败
 		util.Run("chown", "-R", "builder:builder", paruCache)
-		paruArgs := append([]string{
+		paruInstallArgs := append([]string{
 			"-u", "builder", "--",
 			"paru", "-S", "--needed", "--noconfirm",
 			"--clonedir", paruCache,
-			"--root", root,
-		}, agg.AurPkgs...)
-		if err := util.Run("runuser", paruArgs...); err != nil {
+		}, diff.Missing...)
+		if err := util.Run("runuser", paruInstallArgs...); err != nil {
 			fmt.Fprintln(os.Stderr, i18n.T("maintain.paru.warn", err))
 		}
 	} else {
-		fmt.Println(i18n.T("maintain.step3.skip"))
+		fmt.Println(i18n.T("maintain.step2.skip"))
 	}
 
-	// 4. 启用服务
+	// 步骤 3：清理孤立依赖
+	fmt.Println(i18n.T("maintain.step3"))
+	maintainRemoveOrphans(root, dbPath, disauto)
+
+	// 步骤 4：全量更新
+	fmt.Println(i18n.T("maintain.step.syu"))
+	helper.EnsureBuilderUser()
+	util.Run("chown", "-R", "builder:builder", paruCache)
+	syuArgs := []string{"-u", "builder", "--", "paru", "-Syu", "--noconfirm", "--clonedir", paruCache}
+	if err := util.Run("runuser", syuArgs...); err != nil {
+		fmt.Fprintln(os.Stderr, i18n.T("maintain.paru.warn", err))
+	}
+
+	// 步骤 5：启用服务
 	if len(agg.Services) > 0 {
 		fmt.Println(i18n.T("maintain.step4"))
 		helper.EnableServiceLive(agg.Services)
@@ -126,7 +126,7 @@ func Run(args []string) {
 		fmt.Println(i18n.T("maintain.step4.skip"))
 	}
 
-	// 4.5. 叠加文件
+	// 步骤 6：叠加文件
 	if len(agg.FileMappings) > 0 {
 		fmt.Println(i18n.T("maintain.step.copyfiles"))
 		helper.CopyFilesLive(configDir, agg.FileMappings)
@@ -134,24 +134,26 @@ func Run(args []string) {
 		fmt.Println(i18n.T("maintain.step.copyfiles.skip"))
 	}
 
-	// 4.6. 执行 chroot 层
-	if len(agg.ChrootLayers) > 0 {
+	// 步骤 7：执行 chroot-cmd（包安装已在步骤 2 统一处理，仅执行命令）
+	hasChrootCmds := false
+	for _, cl := range agg.ChrootLayers {
+		if cl.Helper == "chroot-cmd" {
+			hasChrootCmds = true
+			break
+		}
+	}
+	if hasChrootCmds {
 		fmt.Println(i18n.T("maintain.step.chroot"))
 		for _, cl := range agg.ChrootLayers {
-			switch cl.Helper {
-			case "chroot-cmd":
+			if cl.Helper == "chroot-cmd" {
 				helper.ChrootCmdLive(cl.Env, cl.Commands)
-			case "chroot-pacman":
-				helper.ChrootPacmanLive(cl.Env, cl.Packages)
-			case "chroot-paru":
-				helper.ChrootParuLive(cl.Env, cl.Packages)
 			}
 		}
 	} else {
 		fmt.Println(i18n.T("maintain.step.chroot.skip"))
 	}
 
-	// 5. 创建快照并部署引导
+	// 步骤 8：创建快照并部署引导
 	fmt.Println(i18n.T("maintain.step5"))
 	newSnapName := currentSnap + "-" + ts
 	snapshotDir := filepath.Join(config.DefaultWorkDir, "snapshots", newSnapName)
@@ -189,33 +191,22 @@ func detectCurrentSnapshot() string {
 	return ""
 }
 
-func maintainCleanup(root, dbPath, absDBPath string, expectedPkgs []string, disauto bool) {
-	expectedSet := pkgmgr.ExpandPkgGroups(expectedPkgs)
-
-	explicitPkgs, err := pkgmgr.ListExplicitPkgs(root, dbPath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, i18n.T("maintain.query.failed", err))
-	} else {
-		var demote []string
-		for _, pkg := range explicitPkgs {
-			if !expectedSet[pkg] {
-				demote = append(demote, pkg)
+func maintainDemote(absDBPath string, extra []string, disauto bool) {
+	if len(extra) > 0 {
+		fmt.Println(i18n.T("maintain.demote", len(extra), strings.Join(extra, " ")))
+		if disauto {
+			fmt.Println(i18n.T("maintain.confirm.demote"))
+			if !confirmPrompt() {
+				util.Fatal(i18n.T("maintain.aborted"))
 			}
 		}
-		if len(demote) > 0 {
-			fmt.Println(i18n.T("maintain.demote", len(demote), strings.Join(demote, " ")))
-			if disauto {
-				fmt.Println(i18n.T("maintain.confirm.demote"))
-				if !confirmPrompt() {
-					util.Fatal(i18n.T("maintain.aborted"))
-				}
-			}
-			for _, pkg := range demote {
-				util.RunSilent("pacman", "--dbpath", absDBPath, "-D", "--asdeps", pkg, "--noconfirm")
-			}
+		for _, pkg := range extra {
+			util.RunSilent("pacman", "--dbpath", absDBPath, "-D", "--asdeps", pkg, "--noconfirm")
 		}
 	}
+}
 
+func maintainRemoveOrphans(root, dbPath string, disauto bool) {
 	for {
 		orphans, err := pkgmgr.ListOrphans(root, dbPath)
 		if err != nil || len(orphans) == 0 {

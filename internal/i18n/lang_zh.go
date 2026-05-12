@@ -13,6 +13,7 @@ var zhMessages = map[string]string{
 命令:
   build     分层构建系统快照
   compare   对比当前系统与配置差异
+  config    管理配置目录（收集 inherit 文件、导入/导出压缩包）
   flatten   部署快照到引导
   init      初始化工作环境
   maintain  动态维护模式（直接操作当前系统）
@@ -24,8 +25,13 @@ var zhMessages = map[string]string{
   --lang <语言>          界面语言 (zh/en, 默认: 自动检测)
 
 build 选项:
-  --clean [层名...]  清理 layers 后重新构建 (不指定则清理全部)
-  --verify          构建后快照前校验展平一致性
+  --clean [层名...]       清理 layers 后重新构建 (不指定则清理全部)
+  --verify               构建后快照前校验展平一致性
+
+config 选项:
+  --collect              将 inherit 列表中的文件从宿主机收集到 config/inherit/
+  --export <文件>         将整个配置目录打包为 .tar.gz 压缩包
+  --import <文件>         从 .tar.gz 压缩包还原配置目录
 
 verify 选项:
   --flat <展平目录>     展平子卷路径
@@ -42,6 +48,7 @@ maintain 选项:
 flatten 选项:
   --list              列出已部署的引导条目
   --remove <名称>     移除引导条目
+  --use-inherit-store 部署时从 config/inherit/ 读取 inherit 文件而非宿主机
   <快照路径或名称>     要部署的快照 (默认: latest)`,
 
 	// ── util.go ──
@@ -148,44 +155,44 @@ flatten 选项:
   ├── snapshots/       # 生产快照
   ├── shared/          # 持久化共享数据
   │   ├── home/
-  │   └── pacman-cache/
+  │   ├── pacman-cache/    # pacman 包缓存 (btrfs 子卷)
+  │   └── paru-cache/      # paru 包缓存 (btrfs 子卷)
   ├── config/          # 配置文件
   │   ├── layers/      # 层定义 (YAML)
   │   ├── files/       # 叠加文件源目录
-  │   └── inherit.list # 继承列表
+  │   └── inherit/     # 收集的 inherit 文件快照 (--collect)
   ├── work/            # 构建工作区
-  │   ├── flat/        # 展平子卷 (Btrfs)
+  │   ├── flat/        # 展平子卷 (btrfs, 由 build 管理)
   │   ├── merged/      # OverlayFS 合并挂载点
   │   └── ovl_work/    # OverlayFS 工作目录
   └── logs/            # 构建日志`,
 	"init.next": "下一步: sudo starsleep build",
 
 	// ── maintain.go ──
-	"maintain.unknown.arg":    "maintain: 未知参数: %s",
-	"maintain.separator":      "[Maintain] ═══════════════════════════════════════════════",
-	"maintain.title":          "[Maintain] StarSleep 动态维护模式",
-	"maintain.config.dir":     "[Maintain] 配置目录: %s",
-	"maintain.layer.count":    "[Maintain] 层数: %d",
-	"maintain.official.pkgs":  "[Maintain] 官方仓库包: %d 个",
-	"maintain.aur.pkgs":       "[Maintain] AUR 包: %d 个",
-	"maintain.services.count": "[Maintain] 服务: %d 个",
-	"maintain.pre.snapshot":   "[Maintain] 预备: 创建维护前备份快照: %s",
-	"maintain.step1":          "[Maintain] 步骤 1/5: 清理多余软件包...",
-	"maintain.step2":          "[Maintain] 步骤 2/5: 同步官方仓库软件包...",
-	"maintain.step2.skip":     "[Maintain] 步骤 2/5: 无官方仓库包需要安装",
-	"maintain.step3":          "[Maintain] 步骤 3/5: 同步 AUR 软件包...",
-	"maintain.step3.skip":     "[Maintain] 步骤 3/5: 无 AUR 包需要安装",
-	"maintain.paru.warn":      "[Maintain] 警告: paru 安装失败: %v",
-	"maintain.step4":          "[Maintain] 步骤 4/5: 启用 systemd 服务...",
-	"maintain.step4.skip":     "[Maintain] 步骤 4/5: 无服务需要启用",
-	"maintain.step5":          "[Maintain] 步骤 5/5: 创建快照并部署引导...",
-	"maintain.snapshot.name":  "[Maintain] 快照名称: %s",
-	"maintain.detect.failed":  "[Maintain] 无法检测当前快照: %v",
-	"maintain.done":           "[Maintain] ✓ 动态维护完成",
-	"maintain.query.failed":   "[Maintain] 警告: 查询显式包列表失败: %v",
-	"maintain.demote":         "[Maintain] 降级 %d 个包为依赖: %s",
-	"maintain.orphans":        "[Maintain] 清理孤立依赖: %s",
-	"maintain.orphans.failed": "[Maintain] 警告: 清理孤立依赖失败: %v",
+	"maintain.unknown.arg":     "maintain: 未知参数: %s",
+	"maintain.separator":       "[Maintain] ═══════════════════════════════════════════════",
+	"maintain.title":           "[Maintain] StarSleep 动态维护模式",
+	"maintain.config.dir":      "[Maintain] 配置目录: %s",
+	"maintain.layer.count":     "[Maintain] 层数: %d",
+	"maintain.total.pkgs":      "[Maintain] 期望总包数: %d 个",
+	"maintain.services.count":  "[Maintain] 服务: %d 个",
+	"maintain.pre.snapshot":    "[Maintain] 预备: 创建维护前备份快照: %s",
+	"maintain.step1":           "[Maintain] 步骤 1/8: 降级多余软件包...",
+	"maintain.step2":           "[Maintain] 步骤 2/8: 安装缺失软件包...",
+	"maintain.step2.skip":      "[Maintain] 步骤 2/8: 无缺失包，跳过安装",
+	"maintain.step3":           "[Maintain] 步骤 3/8: 清理孤立依赖...",
+	"maintain.step.syu":        "[Maintain] 步骤 4/8: 全量更新 (paru -Syu)...",
+	"maintain.paru.warn":       "[Maintain] 警告: paru 安装失败: %v",
+	"maintain.step4":           "[Maintain] 步骤 5/8: 启用 systemd 服务...",
+	"maintain.step4.skip":      "[Maintain] 步骤 5/8: 无服务需要启用",
+	"maintain.step5":           "[Maintain] 步骤 8/8: 创建快照并部署引导...",
+	"maintain.snapshot.name":   "[Maintain] 快照名称: %s",
+	"maintain.detect.failed":   "[Maintain] 无法检测当前快照: %v",
+	"maintain.done":            "[Maintain] ✓ 动态维护完成",
+	"maintain.query.failed":    "[Maintain] 警告: 查询显式包列表失败: %v",
+	"maintain.demote":          "[Maintain] 降级 %d 个包为依赖: %s",
+	"maintain.orphans":         "[Maintain] 清理孤立依赖: %s",
+	"maintain.orphans.failed":  "[Maintain] 警告: 清理孤立依赖失败: %v",
 	"maintain.confirm.demote":  "[Maintain] 以上包将被降级为依赖，是否继续？",
 	"maintain.confirm.orphans": "[Maintain] 以上孤立依赖将被移除，是否继续？",
 	"maintain.confirm.install": "[Maintain] 将安装以下包: %s",
@@ -215,8 +222,8 @@ flatten 选项:
 	"copyfiles.copy.file.failed": "复制文件失败: %s: %v",
 
 	// ── maintain copy_files ──
-	"maintain.step.copyfiles":      "[Maintain] 步骤 4.5/5: 叠加配置文件...",
-	"maintain.step.copyfiles.skip": "[Maintain] 步骤 4.5/5: 无文件需要叠加",
+	"maintain.step.copyfiles":      "[Maintain] 步骤 6/8: 叠加配置文件...",
+	"maintain.step.copyfiles.skip": "[Maintain] 步骤 6/8: 无文件需要叠加",
 
 	// ── chroot ──
 	"chroot.cmd.start":               "[Chroot] 开始执行 chroot 命令...",
@@ -236,8 +243,8 @@ flatten 选项:
 	"sync.commands":                  "[Sync] 命令: %d 条",
 
 	// ── maintain chroot ──
-	"maintain.step.chroot":      "[Maintain] 步骤 4.6/5: 执行 chroot 命令...",
-	"maintain.step.chroot.skip": "[Maintain] 步骤 4.6/5: 无 chroot 命令需要执行",
+	"maintain.step.chroot":      "[Maintain] 步骤 7/8: 执行 chroot 命令...",
+	"maintain.step.chroot.skip": "[Maintain] 步骤 7/8: 无 chroot 命令需要执行",
 
 	// ── enable_service.go ──
 	"sync.disable.extra":      "[Sync] 禁用多余服务: %s",
@@ -337,4 +344,23 @@ flatten 选项:
 	"compare.cleanup.done":          "[Compare] 临时快照已清理",
 	"compare.target.not.dir":        "对比目标不是目录: %s",
 	"compare.src.not.dir":           "快照中不存在对应目录: %s",
+
+	// ── config_cmd.go ──
+	"config.unknown.arg":         "config: 未知参数: %s",
+	"config.usage":               "用法: starsleep config --collect | --export <文件> | --import <文件>",
+	"config.export.usage":        "用法: starsleep config --export <输出文件.tar.gz>",
+	"config.import.usage":        "用法: starsleep config --import <输入文件.tar.gz>",
+	"config.collect.start":       "收集 inherit 文件: %d 条路径",
+	"config.collect.copied":      "已收集: %s",
+	"config.collect.copy.failed": "警告: 收集失败: %s: %v",
+	"config.collect.done":        "inherit 文件收集完成，已存储到 inherit/ 目录",
+	"config.export.start":        "导出配置到: %s",
+	"config.export.done":         "导出完成: %s",
+	"config.export.failed":       "导出失败: %v",
+	"config.import.start":        "导入配置从: %s",
+	"config.import.done":         "导入完成",
+	"config.import.failed":       "导入失败: %v",
+	"apply.inherit.store":        "应用继承列表 (使用本地存储): %d 条路径",
+	"inherit.store.not.found":    "inherit 存储目录不存在: %s，请先执行 starsleep config --collect",
+	"inherit.store.missing":      "警告: inherit 存储中未找到路径，跳过: %s",
 }

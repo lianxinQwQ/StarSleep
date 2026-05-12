@@ -16,7 +16,6 @@ import (
 
 	"starsleep/internal/config"
 	"starsleep/internal/i18n"
-	"starsleep/internal/pkgmgr"
 	"starsleep/internal/util"
 )
 
@@ -39,87 +38,29 @@ func Packages(layers []*config.LayerConfig, configDir, dbPath string, verbose bo
 	var allConfigPkgs []string
 	for _, cfg := range layers {
 		switch cfg.Helper {
-		case "pacstrap", "pacman", "paru":
+		case "pacstrap", "pacman", "paru", "chroot-pacman", "chroot-paru":
 			allConfigPkgs = append(allConfigPkgs, cfg.Packages...)
 		}
 	}
 
-	// 解析哪些配置项是包组，获取组→成员映射
-	groupMembers := pkgmgr.ResolveGroupMembers(allConfigPkgs)
-
-	// 构建配置中直接指定的非组包名集合（排除包组名本身）
-	configPkgSet := make(map[string]bool, len(allConfigPkgs))
-	for _, pkg := range allConfigPkgs {
-		if _, isGroup := groupMembers[pkg]; !isGroup {
-			configPkgSet[pkg] = true
-		}
-	}
-	// 将包组成员也加入期望集合
-	for _, members := range groupMembers {
-		for _, m := range members {
-			configPkgSet[m] = true
-		}
-	}
-
-	fmt.Println(i18n.T("compare.pkg.expected", len(configPkgSet)))
-
-	// ── 查询当前系统的包列表 ──
-
-	// 显式安装包（主动安装）
-	explicitPkgs, err := pkgmgr.ListExplicitPkgs("/", dbPath)
+	diff, err := ComputePkgDiff(allConfigPkgs, "/", dbPath)
 	if err != nil {
 		util.Fatal(i18n.T("compare.query.failed", err))
 	}
-	explicitSet := make(map[string]bool, len(explicitPkgs))
-	for _, pkg := range explicitPkgs {
-		explicitSet[pkg] = true
-	}
 
-	// 全量已安装包（包含依赖安装的）
-	allInstalled, err := pkgmgr.ListInstalledPkgs("/", dbPath)
-	if err != nil {
-		util.Fatal(i18n.T("compare.query.failed", err))
-	}
-	installedSet := make(map[string]bool, len(allInstalled))
-	for _, pkg := range allInstalled {
-		installedSet[pkg] = true
-	}
-
-	fmt.Println(i18n.T("compare.pkg.installed", len(explicitSet)))
+	fmt.Println(i18n.T("compare.pkg.expected", len(diff.ExpectedSet)))
+	fmt.Println(i18n.T("compare.pkg.installed", len(diff.ExplicitSet)))
 	if verbose {
-		fmt.Println(i18n.T("compare.pkg.all.installed", len(installedSet)))
+		fmt.Println(i18n.T("compare.pkg.all.installed", len(diff.InstalledSet)))
 	}
 	fmt.Println(i18n.T("compare.separator"))
 
-	// ── 计算差异 ──
-
-	// 真正缺失的包: 配置期望但系统完全未安装
-	var missing []string
-	// 作为依赖安装的包: 存在但非主动安装
-	var asDeps []string
-
-	for pkg := range configPkgSet {
-		if explicitSet[pkg] {
-			// 主动安装，无差异
-			continue
-		}
-		if installedSet[pkg] {
-			// 存在但以依赖身份安装
-			asDeps = append(asDeps, pkg)
-		} else {
-			// 完全未安装
-			missing = append(missing, pkg)
-		}
-	}
-	sort.Strings(missing)
-	sort.Strings(asDeps)
-
 	// 检查包组：标记组成员是否完整安装
 	var groupStatus []string
-	for groupName, members := range groupMembers {
+	for groupName, members := range diff.GroupMembers {
 		installed := 0
 		for _, m := range members {
-			if installedSet[m] {
+			if diff.InstalledSet[m] {
 				installed++
 			}
 		}
@@ -127,15 +68,6 @@ func Packages(layers []*config.LayerConfig, configDir, dbPath string, verbose bo
 		groupStatus = append(groupStatus, status)
 	}
 	sort.Strings(groupStatus)
-
-	// 多余包: 系统主动安装但配置中未定义（展开后也不匹配）
-	var extra []string
-	for pkg := range explicitSet {
-		if !configPkgSet[pkg] {
-			extra = append(extra, pkg)
-		}
-	}
-	sort.Strings(extra)
 
 	// ── 输出结果 ──
 
@@ -149,23 +81,23 @@ func Packages(layers []*config.LayerConfig, configDir, dbPath string, verbose bo
 	}
 
 	// 缺失包（完全未安装的，始终显示）
-	if len(missing) > 0 {
-		fmt.Println(i18n.T("compare.pkg.missing.header", len(missing)))
-		for _, pkg := range missing {
+	if len(diff.Missing) > 0 {
+		fmt.Println(i18n.T("compare.pkg.missing.header", len(diff.Missing)))
+		for _, pkg := range diff.Missing {
 			fmt.Println(i18n.T("compare.pkg.missing.item", pkg))
 		}
 	} else if verbose {
 		fmt.Println(i18n.T("compare.pkg.no.missing"))
 	}
-	if len(missing) > 0 || verbose {
+	if len(diff.Missing) > 0 || verbose {
 		fmt.Println()
 	}
 
 	// 依赖安装包（仅详细模式显示，平时视为已安装无差异）
 	if verbose {
-		if len(asDeps) > 0 {
-			fmt.Println(i18n.T("compare.pkg.asdeps.header", len(asDeps)))
-			for _, pkg := range asDeps {
+		if len(diff.AsDeps) > 0 {
+			fmt.Println(i18n.T("compare.pkg.asdeps.header", len(diff.AsDeps)))
+			for _, pkg := range diff.AsDeps {
 				fmt.Println(i18n.T("compare.pkg.asdeps.item", pkg))
 			}
 		} else {
@@ -175,9 +107,9 @@ func Packages(layers []*config.LayerConfig, configDir, dbPath string, verbose bo
 	}
 
 	// 多余包（始终显示）
-	if len(extra) > 0 {
-		fmt.Println(i18n.T("compare.pkg.extra.header", len(extra)))
-		for _, pkg := range extra {
+	if len(diff.Extra) > 0 {
+		fmt.Println(i18n.T("compare.pkg.extra.header", len(diff.Extra)))
+		for _, pkg := range diff.Extra {
 			fmt.Println(i18n.T("compare.pkg.extra.item", pkg))
 		}
 	} else if verbose {
@@ -186,13 +118,13 @@ func Packages(layers []*config.LayerConfig, configDir, dbPath string, verbose bo
 
 	// ── 汇总 ──
 	fmt.Println(i18n.T("compare.separator"))
-	// 普通模式: 只计缺失和多余为差异；详细模式: 额外显示依赖安装数
-	totalDiff := len(missing) + len(extra)
+	totalDiff := len(diff.Missing) + len(diff.Extra)
 	if totalDiff == 0 {
 		fmt.Println(i18n.T("compare.pkg.match"))
 	} else if verbose {
-		fmt.Println(i18n.T("compare.pkg.diff.verbose", totalDiff, len(missing), len(asDeps), len(extra)))
+		fmt.Println(i18n.T("compare.pkg.diff.verbose", totalDiff, len(diff.Missing), len(diff.AsDeps), len(diff.Extra)))
 	} else {
-		fmt.Println(i18n.T("compare.pkg.diff", totalDiff, len(missing), len(extra)))
+		fmt.Println(i18n.T("compare.pkg.diff", totalDiff, len(diff.Missing), len(diff.Extra)))
 	}
 }
+

@@ -31,28 +31,33 @@ const (
 // Run 执行快照部署命令
 func Run(args []string) {
 	util.CheckRoot()
+	configDir, remaining := config.ParseConfigFlags(config.DefaultConfigDir, args)
 
 	workDir := config.DefaultWorkDir
+	useInheritStore := false
 
-	if len(args) > 0 {
-		switch args[0] {
+	if len(remaining) > 0 {
+		switch remaining[0] {
 		case "--list":
 			listBootEntries()
 			return
 		case "--remove":
-			if len(args) < 2 {
+			if len(remaining) < 2 {
 				util.Fatal(i18n.T("flatten.remove.usage"))
 			}
-			removeBootEntry(args[1])
+			removeBootEntry(remaining[1])
 			return
+		case "--use-inherit-store":
+			useInheritStore = true
+			remaining = remaining[1:]
 		}
 	}
 
 	var target string
-	if len(args) == 0 {
+	if len(remaining) == 0 {
 		target = filepath.Join(workDir, "snapshots/latest")
 	} else {
-		target = args[0]
+		target = remaining[0]
 	}
 
 	// 解析符号链接得到实际路径
@@ -74,6 +79,18 @@ func Run(args []string) {
 	}
 
 	snapName := filepath.Base(target)
+
+	// 应用继承列表
+	mc, err := config.LoadMainConfig(configDir)
+	if err != nil {
+		util.Fatal(i18n.T("load.config.failed", err))
+	}
+	if useInheritStore {
+		applyInheritFromStore(mc, configDir, target)
+	} else {
+		ApplyInheritList(mc, target)
+	}
+
 	DeploySnapshot(target, snapName)
 
 	fmt.Println(i18n.T("deploy.separator"))
@@ -223,4 +240,78 @@ func detectRootUUID() string {
 
 	util.Fatal(i18n.T("root.uuid.not.found"))
 	return ""
+}
+
+// ApplyInheritList 从当前宿主机复制继承路径到快照
+func ApplyInheritList(mc *config.MainConfig, snapshotDir string) {
+	paths := config.LoadInheritList(mc)
+	if len(paths) == 0 {
+		return
+	}
+
+	util.LogMsg(i18n.T("apply.inherit"), len(paths))
+	for _, entry := range paths {
+		fi, err := os.Stat(entry)
+		if err != nil {
+			util.LogMsg(i18n.T("inherit.path.missing"), entry)
+			continue
+		}
+
+		dst := filepath.Join(snapshotDir, entry)
+		os.MkdirAll(filepath.Dir(dst), 0o755)
+
+		if fi.IsDir() {
+			if err := util.Run("cp", "-ax", "--reflink=auto", entry, filepath.Dir(dst)+"/"); err != nil {
+				util.LogMsg(i18n.T("copy.dir.failed"), entry, err)
+			} else {
+				util.LogMsg(i18n.T("inherit.dir"), entry)
+			}
+		} else {
+			if err := util.Run("cp", "-a", "--reflink=auto", entry, dst); err != nil {
+				util.LogMsg(i18n.T("copy.file.failed"), entry, err)
+			} else {
+				util.LogMsg(i18n.T("inherit.file"), entry)
+			}
+		}
+	}
+}
+
+// applyInheritFromStore 从 configDir/inherit/ 目录复制继承文件到快照
+func applyInheritFromStore(mc *config.MainConfig, configDir string, snapshotDir string) {
+	storeDir := filepath.Join(configDir, config.InheritDir)
+	if _, err := os.Stat(storeDir); err != nil {
+		util.Fatal(i18n.T("inherit.store.not.found", storeDir))
+	}
+
+	paths := config.LoadInheritList(mc)
+	if len(paths) == 0 {
+		return
+	}
+
+	util.LogMsg(i18n.T("apply.inherit.store"), len(paths))
+	for _, entry := range paths {
+		storeSrc := filepath.Join(storeDir, entry)
+		fi, err := os.Stat(storeSrc)
+		if err != nil {
+			util.LogMsg(i18n.T("inherit.store.missing"), entry)
+			continue
+		}
+
+		dst := filepath.Join(snapshotDir, entry)
+		os.MkdirAll(filepath.Dir(dst), 0o755)
+
+		if fi.IsDir() {
+			if err := util.Run("cp", "-ax", "--reflink=auto", storeSrc, filepath.Dir(dst)+"/"); err != nil {
+				util.LogMsg(i18n.T("copy.dir.failed"), storeSrc, err)
+			} else {
+				util.LogMsg(i18n.T("inherit.dir"), entry)
+			}
+		} else {
+			if err := util.Run("cp", "-a", "--reflink=auto", storeSrc, dst); err != nil {
+				util.LogMsg(i18n.T("copy.file.failed"), storeSrc, err)
+			} else {
+				util.LogMsg(i18n.T("inherit.file"), entry)
+			}
+		}
+	}
 }

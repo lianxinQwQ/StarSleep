@@ -15,4 +15,6 @@ const (
 	DefaultPkgCacheDir = "/var/cache/pacman/pkg"
 	// DefaultDBPath pacman 数据库路径（相对于目标根目录）
 	DefaultDBPath = "var/lib/pacman"
+	// InheritDir 配置目录下存放 inherit 文件快照的子目录名
+	InheritDir = "inherit"
 )

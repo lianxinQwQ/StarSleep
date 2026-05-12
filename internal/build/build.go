@@ -214,9 +214,6 @@ func Run(args []string) {
 		util.Fatal(i18n.T("snapshot.failed", err))
 	}
 
-	// 应用继承列表
-	ApplyInheritList(mainCfg, snapshotDir)
-
 	// 更新 latest 符号链接
 	latestLink := filepath.Join(workDir, "snapshots/latest")
 	os.Remove(latestLink)
@@ -309,39 +306,4 @@ func runSyncSafe(root, configDir, dbPath string, cfg *config.LayerConfig, expect
 	return true
 }
 
-// ApplyInheritList 从当前系统复制继承路径到快照
-//
-// 根据 config.yaml 中 inherit 段列出的路径，将宿主机上的文件或目录
-// 通过 reflink 复制到新生成的快照中，实现配置/数据的跨快照继承。
-func ApplyInheritList(mc *config.MainConfig, snapshotDir string) {
-	paths := config.LoadInheritList(mc)
-	if len(paths) == 0 {
-		return
-	}
 
-	util.LogMsg(i18n.T("apply.inherit"), len(paths))
-	for _, entry := range paths {
-		fi, err := os.Stat(entry)
-		if err != nil {
-			util.LogMsg(i18n.T("inherit.path.missing"), entry)
-			continue
-		}
-
-		dst := filepath.Join(snapshotDir, entry)
-		os.MkdirAll(filepath.Dir(dst), 0o755)
-
-		if fi.IsDir() {
-			if err := util.Run("cp", "-ax", "--reflink=auto", entry, filepath.Dir(dst)+"/"); err != nil {
-				util.LogMsg(i18n.T("copy.dir.failed"), entry, err)
-			} else {
-				util.LogMsg(i18n.T("inherit.dir"), entry)
-			}
-		} else {
-			if err := util.Run("cp", "-a", "--reflink=auto", entry, dst); err != nil {
-				util.LogMsg(i18n.T("copy.file.failed"), entry, err)
-			} else {
-				util.LogMsg(i18n.T("inherit.file"), entry)
-			}
-		}
-	}
-}

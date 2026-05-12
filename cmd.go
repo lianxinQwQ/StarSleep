@@ -4,6 +4,7 @@ package main
 import (
 	"starsleep/internal/build"
 	"starsleep/internal/compare"
+	"starsleep/internal/config_cmd"
 	"starsleep/internal/deploy"
 	"starsleep/internal/init_env"
 	"starsleep/internal/maintain"
@@ -17,6 +18,8 @@ func dispatch(cmd string, args []string) bool {
 		build.Run(args)
 	case "compare":
 		compare.Run(args)
+	case "config":
+		config_cmd.Run(args)
 	case "flatten":
 		deploy.Run(args)
 	case "init":

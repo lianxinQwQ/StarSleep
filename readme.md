@@ -18,7 +18,7 @@ StarSleep 通过 YAML 配置文件定义系统的分层结构，使用 OverlayFS
 - **systemd-boot 集成** — `flatten` 命令自动将内核和 initramfs 部署到 ESP 并生成引导条目
 - **动态维护模式** — `maintain` 命令直接在运行中的系统上同步配置，清理多余包和孤立依赖
 - **一致性校验** — `verify` 命令通过 rsync 对比展平目录与 OverlayFS 合并视图，确保展平结果正确
-- **继承列表** — 通过 `inherit.list` 从宿主系统继承指定文件/目录到快照
+- **继承列表** — 通过 `config.yaml` 的 `inherit` 段从宿主系统继承指定文件/目录到快照，支持离线收集和导入/导出
 - **i18n** — 支持中文/英文界面 (`--lang zh|en`)
 
 ## 前置条件
@@ -70,13 +70,14 @@ sudo starsleep init
 ├── snapshots/         # 构建产物快照 (Btrfs subvolume)
 ├── shared/            # 跨构建持久化数据
 │   ├── home/
-│   └── pacman-cache/  # 包缓存共享
+│   ├── pacman-cache/  # pacman 包缓存 (Btrfs subvolume)
+│   └── paru-cache/    # paru 包缓存 (Btrfs subvolume)
 ├── config/            # 配置文件
 │   ├── layers/        # 层定义 (YAML)
 │   ├── files/         # 叠加文件源目录 (copy_files 用)
-│   └── inherit.list   # 继承列表
+│   └── inherit/       # 收集的 inherit 文件快照 (config --collect 用)
 ├── work/              # 构建工作区 (临时)
-│   ├── flat/          # 展平子卷 (Btrfs)
+│   ├── flat/          # 展平子卷 (Btrfs, 由 build 管理)
 │   ├── merged/        # OverlayFS 合并挂载点
 │   └── ovl_work/      # OverlayFS 工作目录
 └── logs/              # 构建日志
@@ -194,8 +195,33 @@ sudo starsleep build -cp /path/to/your/config
 - `--clean` — 清理所有层缓存后重新构建
 - `--clean layer1 layer2` — 仅清理指定层
 - `--verify` — 构建后校验展平一致性
+- `--use-inherit-store` — 快照时从 `config/inherit/` 读取 inherit 文件而非宿主机实时文件（需先执行 `config --collect`）
 
-### 4. 部署引导
+### 4. 管理 inherit 文件（可选）
+
+`config` 命令用于管理配置目录中的 inherit 文件快照，实现离线构建与配置可移植。
+
+```bash
+# 将 config.yaml inherit 列表中的文件从宿主机收集到 config/inherit/
+sudo starsleep config --collect
+
+# 构建时使用 config/inherit/ 中的文件而非宿主机实时文件
+sudo starsleep build --use-inherit-store
+
+# 将整个配置目录（含 inherit/ 快照）打包为压缩包
+sudo starsleep config --export /path/to/myconfig.tar.gz
+
+# 从压缩包还原配置目录（适用于迁移到新机器）
+sudo starsleep config --import /path/to/myconfig.tar.gz
+```
+
+`config/inherit/` 目录保留 inherit 路径的绝对路径结构，例如：
+- `/etc/passwd` → `config/inherit/etc/passwd`
+- `/etc/ssh/` → `config/inherit/etc/ssh/`
+
+导出压缩包时 `inherit/` 目录也会一并打包，便于完整迁移。
+
+### 5. 部署引导
 
 ```bash
 sudo starsleep flatten
@@ -231,6 +257,7 @@ sudo starsleep maintain
 |---|---|
 | `starsleep init` | 初始化工作目录和依赖检查 |
 | `starsleep build` | 分层构建系统快照 |
+| `starsleep config` | 管理配置目录（收集 inherit、导入/导出压缩包） |
 | `starsleep flatten` | 部署快照到 systemd-boot |
 | `starsleep maintain` | 动态维护当前运行系统 |
 | `starsleep verify` | 独立运行展平一致性校验 |
@@ -267,7 +294,9 @@ sudo starsleep maintain
   ┌──────────────▼───────────────────────────────────┐
   │  btrfs subvolume snapshot flat → snapshots/<ts>  │
   ├──────────────────────────────────────────────────┤
-  │  应用 inherit.list → 继承宿主文件                  │
+  │  应用 inherit 列表                                │
+  │    默认: 从宿主机实时读取                          │
+  │    --use-inherit-store: 从 config/inherit/ 读取   │
   ├──────────────────────────────────────────────────┤
   │  flatten → 复制内核到 ESP + 生成 boot entry       │
   └──────────────────────────────────────────────────┘

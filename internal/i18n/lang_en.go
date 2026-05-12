@@ -13,6 +13,7 @@ Usage:
 Commands:
   build     Build system snapshot in layers
   compare   Compare current system against config
+  config    Manage config directory (collect inherit files, import/export archive)
   flatten   Deploy snapshot to boot
   init      Initialize work environment
   maintain  Dynamic maintenance mode (operate on running system)
@@ -24,8 +25,13 @@ General options:
   --lang <lang>          UI language (zh/en, default: auto-detect)
 
 build options:
-  --clean [layers...]  Clean layers and rebuild (all if none specified)
-  --verify             Verify flatten consistency before snapshot
+  --clean [layers...]    Clean layers and rebuild (all if none specified)
+  --verify               Verify flatten consistency before snapshot
+
+config options:
+  --collect              Collect inherit-listed files from host into config/inherit/
+  --export <file>        Pack entire config directory into a .tar.gz archive
+  --import <file>        Restore config directory from a .tar.gz archive
 
 verify options:
   --flat <flat-dir>         Flat subvolume path
@@ -42,6 +48,7 @@ maintain options:
 flatten options:
   --list              List deployed boot entries
   --remove <name>     Remove boot entry
+  --use-inherit-store Use files from config/inherit/ instead of live host when applying inherit
   <snapshot-path>     Snapshot to deploy (default: latest)`,
 
 	// ── util.go ──
@@ -148,44 +155,44 @@ flatten options:
   ├── snapshots/       # Production snapshots
   ├── shared/          # Persistent shared data
   │   ├── home/
-  │   └── pacman-cache/
+  │   ├── pacman-cache/    # pacman package cache (btrfs subvol)
+  │   └── paru-cache/      # paru package cache (btrfs subvol)
   ├── config/          # Configuration files
   │   ├── layers/      # Layer definitions (YAML)
   │   ├── files/       # Overlay files source dir
-  │   └── inherit.list # Inherit list
+  │   └── inherit/     # Collected inherit file snapshots (--collect)
   ├── work/            # Build workspace
-  │   ├── flat/        # Flat subvolume (Btrfs)
+  │   ├── flat/        # Flat subvolume (btrfs, managed by build)
   │   ├── merged/      # OverlayFS merged mount
   │   └── ovl_work/    # OverlayFS work dir
   └── logs/            # Build logs`,
 	"init.next": "Next step: sudo starsleep build",
 
 	// ── maintain.go ──
-	"maintain.unknown.arg":    "maintain: unknown argument: %s",
-	"maintain.separator":      "[Maintain] ═══════════════════════════════════════════════",
-	"maintain.title":          "[Maintain] StarSleep Dynamic Maintenance Mode",
-	"maintain.config.dir":     "[Maintain] Config dir: %s",
-	"maintain.layer.count":    "[Maintain] Layers: %d",
-	"maintain.official.pkgs":  "[Maintain] Official repo packages: %d",
-	"maintain.aur.pkgs":       "[Maintain] AUR packages: %d",
-	"maintain.services.count": "[Maintain] Services: %d",
-	"maintain.pre.snapshot":   "[Maintain] Prep: creating pre-maintain backup snapshot: %s",
-	"maintain.step1":          "[Maintain] Step 1/5: Cleaning up extra packages...",
-	"maintain.step2":          "[Maintain] Step 2/5: Syncing official repo packages...",
-	"maintain.step2.skip":     "[Maintain] Step 2/5: No official packages to install",
-	"maintain.step3":          "[Maintain] Step 3/5: Syncing AUR packages...",
-	"maintain.step3.skip":     "[Maintain] Step 3/5: No AUR packages to install",
-	"maintain.paru.warn":      "[Maintain] Warning: paru installation failed: %v",
-	"maintain.step4":          "[Maintain] Step 4/5: Enabling systemd services...",
-	"maintain.step4.skip":     "[Maintain] Step 4/5: No services to enable",
-	"maintain.step5":          "[Maintain] Step 5/5: Creating snapshot and deploying boot entry...",
-	"maintain.snapshot.name":  "[Maintain] Snapshot name: %s",
-	"maintain.detect.failed":  "[Maintain] Failed to detect current snapshot: %v",
-	"maintain.done":           "[Maintain] ✓ Dynamic maintenance complete",
-	"maintain.query.failed":   "[Maintain] Warning: failed to query explicit packages: %v",
-	"maintain.demote":         "[Maintain] Demoting %d packages to deps: %s",
-	"maintain.orphans":        "[Maintain] Cleaning orphan deps: %s",
-	"maintain.orphans.failed": "[Maintain] Warning: failed to clean orphan deps: %v",
+	"maintain.unknown.arg":     "maintain: unknown argument: %s",
+	"maintain.separator":       "[Maintain] ═══════════════════════════════════════════════",
+	"maintain.title":           "[Maintain] StarSleep Dynamic Maintenance Mode",
+	"maintain.config.dir":      "[Maintain] Config dir: %s",
+	"maintain.layer.count":     "[Maintain] Layers: %d",
+	"maintain.total.pkgs":      "[Maintain] Expected total packages: %d",
+	"maintain.services.count":  "[Maintain] Services: %d",
+	"maintain.pre.snapshot":    "[Maintain] Prep: creating pre-maintain backup snapshot: %s",
+	"maintain.step1":           "[Maintain] Step 1/8: Demoting extra packages...",
+	"maintain.step2":           "[Maintain] Step 2/8: Installing missing packages...",
+	"maintain.step2.skip":      "[Maintain] Step 2/8: No missing packages, skipping",
+	"maintain.step3":           "[Maintain] Step 3/8: Cleaning orphan deps...",
+	"maintain.step.syu":        "[Maintain] Step 4/8: Full update (paru -Syu)...",
+	"maintain.paru.warn":       "[Maintain] Warning: paru installation failed: %v",
+	"maintain.step4":           "[Maintain] Step 5/8: Enabling systemd services...",
+	"maintain.step4.skip":      "[Maintain] Step 5/8: No services to enable",
+	"maintain.step5":           "[Maintain] Step 8/8: Creating snapshot and deploying boot entry...",
+	"maintain.snapshot.name":   "[Maintain] Snapshot name: %s",
+	"maintain.detect.failed":   "[Maintain] Failed to detect current snapshot: %v",
+	"maintain.done":            "[Maintain] ✓ Dynamic maintenance complete",
+	"maintain.query.failed":    "[Maintain] Warning: failed to query explicit packages: %v",
+	"maintain.demote":          "[Maintain] Demoting %d packages to deps: %s",
+	"maintain.orphans":         "[Maintain] Cleaning orphan deps: %s",
+	"maintain.orphans.failed":  "[Maintain] Warning: failed to clean orphan deps: %v",
 	"maintain.confirm.demote":  "[Maintain] The above packages will be demoted to deps, continue?",
 	"maintain.confirm.orphans": "[Maintain] The above orphan deps will be removed, continue?",
 	"maintain.confirm.install": "[Maintain] Packages to install: %s",
@@ -215,8 +222,8 @@ flatten options:
 	"copyfiles.copy.file.failed": "Failed to copy file: %s: %v",
 
 	// ── maintain copy_files ──
-	"maintain.step.copyfiles":      "[Maintain] Step 4.5/5: Overlaying config files...",
-	"maintain.step.copyfiles.skip": "[Maintain] Step 4.5/5: No files to overlay",
+	"maintain.step.copyfiles":      "[Maintain] Step 6/8: Overlaying config files...",
+	"maintain.step.copyfiles.skip": "[Maintain] Step 6/8: No files to overlay",
 
 	// ── chroot ──
 	"chroot.cmd.start":               "[Chroot] Starting chroot command execution...",
@@ -236,8 +243,8 @@ flatten options:
 	"sync.commands":                  "[Sync] Commands: %d",
 
 	// ── maintain chroot ──
-	"maintain.step.chroot":      "[Maintain] Step 4.6/5: Executing chroot commands...",
-	"maintain.step.chroot.skip": "[Maintain] Step 4.6/5: No chroot commands to execute",
+	"maintain.step.chroot":      "[Maintain] Step 7/8: Executing chroot commands...",
+	"maintain.step.chroot.skip": "[Maintain] Step 7/8: No chroot commands to execute",
 
 	// ── enable_service.go ──
 	"sync.disable.extra":      "[Sync] Disabling extra service: %s",
@@ -336,4 +343,24 @@ flatten options:
 	"compare.rsync.failed":          "[Compare] rsync comparison command failed: %v",
 	"compare.cleanup.done":          "[Compare] Temporary snapshot cleaned up",
 	"compare.target.not.dir":        "Comparison target is not a directory: %s",
-	"compare.src.not.dir":           "Corresponding directory not found in snapshot: %s"}
+	"compare.src.not.dir":           "Corresponding directory not found in snapshot: %s",
+
+	// ── config_cmd.go ──
+	"config.unknown.arg":         "config: unknown argument: %s",
+	"config.usage":               "Usage: starsleep config --collect | --export <file> | --import <file>",
+	"config.export.usage":        "Usage: starsleep config --export <output.tar.gz>",
+	"config.import.usage":        "Usage: starsleep config --import <input.tar.gz>",
+	"config.collect.start":       "Collecting inherit files: %d paths",
+	"config.collect.copied":      "Collected: %s",
+	"config.collect.copy.failed": "Warning: collect failed: %s: %v",
+	"config.collect.done":        "Inherit file collection complete, stored in inherit/ directory",
+	"config.export.start":        "Exporting config to: %s",
+	"config.export.done":         "Export complete: %s",
+	"config.export.failed":       "Export failed: %v",
+	"config.import.start":        "Importing config from: %s",
+	"config.import.done":         "Import complete",
+	"config.import.failed":       "Import failed: %v",
+	"apply.inherit.store":        "Applying inherit list (from local store): %d paths",
+	"inherit.store.not.found":    "Inherit store directory not found: %s, please run starsleep config --collect first",
+	"inherit.store.missing":      "Warning: path not found in inherit store, skipping: %s",
+}
