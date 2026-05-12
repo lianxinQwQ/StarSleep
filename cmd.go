@@ -7,6 +7,7 @@ import (
 	"starsleep/internal/config_cmd"
 	"starsleep/internal/deploy"
 	"starsleep/internal/init_env"
+	"starsleep/internal/install"
 	"starsleep/internal/maintain"
 	"starsleep/internal/verify"
 )
@@ -24,6 +25,8 @@ func dispatch(cmd string, args []string) bool {
 		deploy.Run(args)
 	case "init":
 		init_env.Run(args)
+	case "install":
+		install.Run(args)
 	case "maintain":
 		maintain.Run(args)
 	case "verify":

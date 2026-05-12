@@ -16,6 +16,7 @@ var zhMessages = map[string]string{
   config    管理配置目录（收集 inherit 文件、导入/导出压缩包）
   flatten   部署快照到引导
   init      初始化工作环境
+  install   安装系统到目标分区
   maintain  动态维护模式（直接操作当前系统）
   verify    展平一致性校验
 
@@ -49,7 +50,15 @@ flatten 选项:
   --list              列出已部署的引导条目
   --remove <名称>     移除引导条目
   --use-inherit-store 部署时从 config/inherit/ 读取 inherit 文件而非宿主机
-  <快照路径或名称>     要部署的快照 (默认: latest)`,
+  <快照路径或名称>     要部署的快照 (默认: latest)
+
+install 选项:
+  --boot <分区>     指定 EFI 系统分区 (如 /dev/sda1)
+  --root <分区>     指定根分区 (如 /dev/sda2)
+  --disk <设备>     指定整盘设备 (如 /dev/sda, 将自动分区)
+  --profile <名称>  选择预设配置 (minimal/gnome/dev, 默认: dev)
+  --force           跳过确认提示，强制格式化分区
+  --repo <URL>      预设配置的 Git 仓库 URL (可选, 覆盖默认)`,
 
 	// ── util.go ──
 	"fatal.prefix": "[StarSleep] 错误: %s\n",
@@ -363,4 +372,51 @@ flatten 选项:
 	"apply.inherit.store":        "应用继承列表 (使用本地存储): %d 条路径",
 	"inherit.store.not.found":    "inherit 存储目录不存在: %s，请先执行 starsleep config --collect",
 	"inherit.store.missing":      "警告: inherit 存储中未找到路径，跳过: %s",
+
+	// ── install.go ──
+	"install.usage":              "用法: starsleep install --boot <分区> --root <分区> [--profile <名称>] [--force]\n       starsleep install --disk <设备> [--profile <名称>] [--force]",
+	"install.missing.boot":       "错误: 缺少 --boot 参数，请指定 EFI 系统分区",
+	"install.missing.root":       "错误: 缺少 --root 参数，请指定根分区",
+	"install.no.disk":            "错误: 未找到可用磁盘 (至少 8GB)",
+	"install.separator":          "[Install] ─────────────────────────────────────────────",
+	"install.title":              "[Install] StarSleep 系统安装",
+	"install.profile":            "[Install] 预设配置: %s",
+	"install.boot.partition":     "[Install] EFI 系统分区: %s",
+	"install.root.partition":     "[Install] 根分区: %s",
+	"install.force.mode":         "[Install] --force: 跳过确认",
+	"install.confirm.format":     "[Install] 确认: 分区 %s 已存在文件系统，是否格式化并继续? (y/N): ",
+	"install.format.boot":        "[Install] 格式化 EFI 分区: %s (FAT32)...",
+	"install.format.root":        "[Install] 格式化根分区: %s (Btrfs)...",
+	"install.format.done":        "[Install] 分区格式化完成",
+	"install.fetch.config":       "[Install] 从 GitHub 拉取预设配置: %s",
+	"install.fetch.downloading":  "[Install] 下载: %s",
+	"install.fetch.failed":       "[Install] 无法拉取预设配置 %s: %v\n[Install] 请检查网络连接或手动下载配置到 %s",
+	"install.fetch.done":         "[Install] 配置下载完成",
+	"install.mount.target":       "[Install] 挂载目标分区到 %s",
+	"install.mount.boot":         "[Install] 挂载 EFI 分区 %s 到 %s",
+	"install.create.subvol":      "[Install] 创建 Btrfs 子卷: %s",
+	"install.subvol.layout":      "[Install] 已创建子卷布局: @, @home, @var, @starsleep",
+	"install.init.workdir":       "[Install] 初始化工作目录...",
+	"install.build.start":        "[Install] 开始构建系统...",
+	"install.build.done":         "[Install] 系统构建完成",
+	"install.gen.fstab":          "[Install] 生成 fstab...",
+	"install.fstab.done":         "[Install] fstab 已生成: %s",
+	"install.init.boot":          "[Install] 初始化 systemd-boot...",
+	"install.bootctl.failed":     "[Install] bootctl install 失败: %v",
+	"install.boot.done":          "[Install] systemd-boot 已安装",
+	"install.init.shared":        "[Install] 创建共享目录...",
+	"install.shared.done":        "[Install] 共享目录已就绪",
+	"install.copy.product":       "[Install] 将构建产物复制到目标...",
+	"install.copy.done":          "[Install] 产物复制完成",
+	"install.done":               "[Install] ✓ 安装完成!",
+	"install.reboot.hint":        "[Install] 现在可以重启进入新系统:",
+	"install.reboot.cmd":         "[Install]   sudo reboot",
+	"install.summary.title":      "[Install] ═══════════════════════════════════════════════",
+	"install.summary.profile":    "[Install] 安装配置: %s",
+	"install.summary.boot":       "[Install] EFI 分区:   %s",
+	"install.summary.root":       "[Install] 根分区:     %s",
+	"install.summary.uuid":       "[Install] 根分区 UUID: %s",
+	"install.summary.snapshot":   "[Install] 快照名称:   %s",
+	"install.summary.boot.entry": "[Install] 引导条目:   starsleep-%s.conf",
+	"install.summary.bottom":     "[Install] ═══════════════════════════════════════════════",
 }

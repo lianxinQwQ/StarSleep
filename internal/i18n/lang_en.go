@@ -16,6 +16,7 @@ Commands:
   config    Manage config directory (collect inherit files, import/export archive)
   flatten   Deploy snapshot to boot
   init      Initialize work environment
+  install   Install system to target partitions
   maintain  Dynamic maintenance mode (operate on running system)
   verify    Verify flatten consistency
 
@@ -49,7 +50,15 @@ flatten options:
   --list              List deployed boot entries
   --remove <name>     Remove boot entry
   --use-inherit-store Use files from config/inherit/ instead of live host when applying inherit
-  <snapshot-path>     Snapshot to deploy (default: latest)`,
+  <snapshot-path>     Snapshot to deploy (default: latest)
+
+install options:
+  --boot <part>     EFI system partition (e.g. /dev/sda1)
+  --root <part>     Root partition (e.g. /dev/sda2)
+  --disk <dev>      Whole disk device (e.g. /dev/sda, auto-partition)
+  --profile <name>  Preset configuration (minimal/gnome/dev, default: dev)
+  --force           Skip confirmation prompts, force format
+  --repo <URL>      Git repository URL for preset configs (optional, overrides default)`,
 
 	// ── util.go ──
 	"fatal.prefix": "[StarSleep] Error: %s\n",
@@ -363,4 +372,51 @@ flatten options:
 	"apply.inherit.store":        "Applying inherit list (from local store): %d paths",
 	"inherit.store.not.found":    "Inherit store directory not found: %s, please run starsleep config --collect first",
 	"inherit.store.missing":      "Warning: path not found in inherit store, skipping: %s",
+
+	// ── install.go ──
+	"install.usage":              "Usage: starsleep install --boot <part> --root <part> [--profile <name>] [--force]\n       starsleep install --disk <dev> [--profile <name>] [--force]",
+	"install.missing.boot":       "Error: missing --boot argument, please specify EFI system partition",
+	"install.missing.root":       "Error: missing --root argument, please specify root partition",
+	"install.no.disk":            "Error: no usable disk found (at least 8GB)",
+	"install.separator":          "[Install] ─────────────────────────────────────────────",
+	"install.title":              "[Install] StarSleep System Installation",
+	"install.profile":            "[Install] Preset profile: %s",
+	"install.boot.partition":     "[Install] EFI system partition: %s",
+	"install.root.partition":     "[Install] Root partition: %s",
+	"install.force.mode":         "[Install] --force: skip confirmations",
+	"install.confirm.format":     "[Install] Confirm: partition %s has existing filesystem, format and continue? (y/N): ",
+	"install.format.boot":        "[Install] Formatting EFI partition: %s (FAT32)...",
+	"install.format.root":        "[Install] Formatting root partition: %s (Btrfs)...",
+	"install.format.done":        "[Install] Partition formatting complete",
+	"install.fetch.config":       "[Install] Fetching preset config from GitHub: %s",
+	"install.fetch.downloading":  "[Install] Downloading: %s",
+	"install.fetch.failed":       "[Install] Failed to fetch preset config %s: %v\n[Install] Please check network connection or manually download config to %s",
+	"install.fetch.done":         "[Install] Config download complete",
+	"install.mount.target":       "[Install] Mounting target partition to %s",
+	"install.mount.boot":         "[Install] Mounting EFI partition %s to %s",
+	"install.create.subvol":      "[Install] Creating Btrfs subvolume: %s",
+	"install.subvol.layout":      "[Install] Subvolume layout created: @, @home, @var, @starsleep",
+	"install.init.workdir":       "[Install] Initializing work directory...",
+	"install.build.start":        "[Install] Starting system build...",
+	"install.build.done":         "[Install] System build complete",
+	"install.gen.fstab":          "[Install] Generating fstab...",
+	"install.fstab.done":         "[Install] fstab generated: %s",
+	"install.init.boot":          "[Install] Initializing systemd-boot...",
+	"install.bootctl.failed":     "[Install] bootctl install failed: %v",
+	"install.boot.done":          "[Install] systemd-boot installed",
+	"install.init.shared":        "[Install] Creating shared directories...",
+	"install.shared.done":        "[Install] Shared directories ready",
+	"install.copy.product":       "[Install] Copying build product to target...",
+	"install.copy.done":          "[Install] Product copy complete",
+	"install.done":               "[Install] ✓ Installation complete!",
+	"install.reboot.hint":        "[Install] You can now reboot into the new system:",
+	"install.reboot.cmd":         "[Install]   sudo reboot",
+	"install.summary.title":      "[Install] ═══════════════════════════════════════════════",
+	"install.summary.profile":    "[Install] Profile:     %s",
+	"install.summary.boot":       "[Install] EFI:         %s",
+	"install.summary.root":       "[Install] Root:        %s",
+	"install.summary.uuid":       "[Install] Root UUID:   %s",
+	"install.summary.snapshot":   "[Install] Snapshot:    %s",
+	"install.summary.boot.entry": "[Install] Boot entry:  starsleep-%s.conf",
+	"install.summary.bottom":     "[Install] ═══════════════════════════════════════════════",
 }
