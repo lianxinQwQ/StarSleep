@@ -30,7 +30,7 @@ const (
 func Run(args []string) {
 	util.CheckRoot()
 
-	var bootPart, rootPart, disk, profile, repoURL string
+	var bootPart, rootPart, disk, profile, repoURL, entryName string
 	force := false
 
 	for i := 0; i < len(args); i++ {
@@ -54,6 +54,11 @@ func Run(args []string) {
 			i++
 			if i < len(args) {
 				profile = args[i]
+			}
+		case "--name":
+			i++
+			if i < len(args) {
+				entryName = args[i]
 			}
 		case "--force":
 			force = true
@@ -99,6 +104,11 @@ func Run(args []string) {
 	}
 	fmt.Println(i18n.T("install.separator"))
 
+	// ── 交互：询问 UEFI 固件启动菜单显示名称 ──
+	if entryName == "" {
+		entryName = askEntryName()
+	}
+
 	// ── 阶段 A: 格式化分区 ──
 	formatPartitions(bootPart, rootPart, force)
 
@@ -126,7 +136,7 @@ func Run(args []string) {
 	if err == nil {
 		_ = mc
 	}
-	initBootloader(TargetBootMount, rootUUID, snapshotName)
+	initBootloader(TargetBootMount, rootUUID, snapshotName, entryName)
 
 	// ── 阶段 I: 创建共享目录 ──
 	initSharedDirs()
@@ -206,6 +216,22 @@ func printSummary(profile, bootPart, rootPart, rootUUID, snapshotName string) {
 	fmt.Println()
 	fmt.Println(i18n.T("install.reboot.hint"))
 	fmt.Println(i18n.T("install.reboot.cmd"))
+}
+
+// askEntryName 询问用户在 UEFI 固件启动菜单中的显示名称
+func askEntryName() string {
+	fmt.Println()
+	fmt.Println(i18n.T("install.entry.name.prompt"))
+	fmt.Print(i18n.T("install.entry.name.input"))
+	reader := bufio.NewReader(os.Stdin)
+	text, _ := reader.ReadString('\n')
+	text = strings.TrimSpace(text)
+	if text == "" {
+		text = "StarSleep"
+	}
+	fmt.Printf(i18n.T("install.entry.name.confirm"), text)
+	fmt.Println()
+	return text
 }
 
 // confirmPrompt 等待用户输入 y/N 确认

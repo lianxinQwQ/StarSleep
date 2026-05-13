@@ -12,11 +12,11 @@ import (
 )
 
 // initBootloader 在目标 ESP 上初始化 systemd-boot 并创建首个引导条目
-func initBootloader(espMount, rootUUID, snapshotName string) {
+func initBootloader(espMount, rootUUID, snapshotName, entryName string) {
 	fmt.Println(i18n.T("install.init.boot"))
 
-	// 安装 systemd-boot 到 ESP
-	if err := util.Run("bootctl", "install", "--esp-path="+espMount); err != nil {
+	// 安装 systemd-boot 到 ESP，设置 UEFI 固件中的显示名称
+	if err := util.Run("bootctl", "install", "--esp-path="+espMount, "--entry-token="+entryName); err != nil {
 		util.Fatal(i18n.T("install.bootctl.failed", err))
 	}
 
@@ -34,13 +34,13 @@ editor no
 	}
 
 	// 复制内核和 initramfs 到 ESP
-	deploySnapshotToESP(espMount, snapshotName, rootUUID)
+	deploySnapshotToESP(espMount, snapshotName, rootUUID, entryName)
 
 	fmt.Println(i18n.T("install.boot.done"))
 }
 
 // deploySnapshotToESP 从 build flatDir 复制内核和 initramfs 到目标 ESP
-func deploySnapshotToESP(espMount, snapshotName, rootUUID string) {
+func deploySnapshotToESP(espMount, snapshotName, rootUUID, entryName string) {
 	flatDir := filepath.Join("/starsleep", "work", "flat")
 	bootSrc := filepath.Join(flatDir, "boot")
 
@@ -75,12 +75,12 @@ func deploySnapshotToESP(espMount, snapshotName, rootUUID string) {
 	confPath := filepath.Join(espMount, "loader", "entries", confName)
 	os.MkdirAll(filepath.Dir(confPath), 0o755)
 
-	entry := fmt.Sprintf(`title StarSleep - %s
+	entry := fmt.Sprintf(`title %s - %s
 linux /starsleep/%s/vmlinuz
 %s
 options root="UUID=%s" rootflags=subvol=@ rw quiet splash loglevel=3
 `,
-		snapshotName,
+		entryName, snapshotName,
 		snapshotName,
 		strings.Join(initrdLines, "\n"),
 		rootUUID)

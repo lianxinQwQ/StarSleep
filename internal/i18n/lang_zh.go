@@ -57,6 +57,7 @@ install 选项:
   --root <分区>     指定根分区 (如 /dev/sda2)
   --disk <设备>     指定整盘设备 (如 /dev/sda, 将自动分区)
   --profile <名称>  选择预设配置 (minimal/gnome/dev, 默认: dev)
+  --name <名称>      在 UEFI 固件启动菜单中显示的名称 (默认: StarSleep)
   --force           跳过确认提示，强制格式化分区
   --repo <URL>      预设配置的 Git 仓库 URL (可选, 覆盖默认)`,
 
@@ -419,4 +420,7 @@ install 选项:
 	"install.summary.snapshot":   "[Install] 快照名称:   %s",
 	"install.summary.boot.entry": "[Install] 引导条目:   starsleep-%s.conf",
 	"install.summary.bottom":     "[Install] ═══════════════════════════════════════════════",
+	"install.entry.name.prompt":   "[Install] 请输入在 UEFI 固件启动菜单中显示的系统名称",
+	"install.entry.name.input":    "[Install] (默认为 StarSleep): ",
+	"install.entry.name.confirm":  "[Install] UEFI 启动名称: %s",
 }
