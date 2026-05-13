@@ -59,7 +59,7 @@ install options:
   --profile <name>  Preset configuration (minimal/gnome/dev, default: dev)
   --name <name>      Display name in UEFI firmware boot menu (default: StarSleep)
   --force           Skip confirmation prompts, force format
-  --repo <URL>      Git repository URL for preset configs (optional, overrides default)`,
+  --repo <URL>      Git repository URL for preset configs (optional, e.g. https://github.com/user/repo)`,
 
 	// ── util.go ──
 	"fatal.prefix": "[StarSleep] Error: %s\n",
@@ -420,7 +420,7 @@ install options:
 	"install.summary.snapshot":   "[Install] Snapshot:    %s",
 	"install.summary.boot.entry": "[Install] Boot entry:  starsleep-%s.conf",
 	"install.summary.bottom":     "[Install] ═══════════════════════════════════════════════",
-	"install.entry.name.prompt":   "[Install] Please enter the system name to display in UEFI firmware boot menu",
-	"install.entry.name.input":    "[Install] (default: StarSleep): ",
-	"install.entry.name.confirm":  "[Install] UEFI boot name: %s",
+	"install.entry.name.prompt":  "[Install] Please enter the system name to display in UEFI firmware boot menu",
+	"install.entry.name.input":   "[Install] (default: StarSleep): ",
+	"install.entry.name.confirm": "[Install] UEFI boot name: %s",
 }

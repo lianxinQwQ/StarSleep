@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	// DefaultRepoURL 是预设配置模板的默认 Git 仓库
-	DefaultRepoURL = "https://raw.githubusercontent.com/lianxin/starsleep-go/main/temp-config"
+	// DefaultRepoURL 是预设配置模板的 Git 仓库地址（GitHub Archive API 格式）
+	DefaultRepoURL = "https://github.com/lianxin/starsleep-go"
 	// TargetMount 是目标根分区的临时挂载点
 	TargetMount = "/mnt/starsleep-target"
 	// TargetBootMount 是目标 EFI 分区的临时挂载点
