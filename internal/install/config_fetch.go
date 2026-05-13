@@ -15,10 +15,14 @@ import (
 //
 // GitHub 按需生成 tar.gz（非仓库中提交的压缩包），用管道提取 temp-config/<profile>/ 子目录。
 // 新增层文件无需改代码，只提交到仓库即可。
-func fetchProfile(profile, repoURL string) {
+func fetchProfile(profile, repoURL, branch string) {
 	fmt.Println(i18n.T("install.fetch.config", profile))
 
-	archiveURL := repoURL + "/archive/refs/heads/main.tar.gz"
+	if branch == "" {
+		branch = "main"
+	}
+
+	archiveURL := fmt.Sprintf("%s/archive/refs/heads/%s.tar.gz", repoURL, branch)
 	fmt.Println(i18n.T("install.fetch.downloading", archiveURL))
 
 	configDir := config.DefaultConfigDir

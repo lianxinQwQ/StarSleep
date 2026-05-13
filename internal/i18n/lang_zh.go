@@ -58,6 +58,7 @@ install 选项:
   --disk <设备>     指定整盘设备 (如 /dev/sda, 将自动分区)
   --profile <名称>  选择预设配置 (minimal/gnome/dev, 默认: dev)
   --name <名称>      在 UEFI 固件启动菜单中显示的名称 (默认: StarSleep)
+  --branch <分支>    预设配置所在的 Git 分支 (默认: main)
   --force           跳过确认提示，强制格式化分区
   --repo <URL>      预设配置的 Git 仓库地址 (可选, 如 https://github.com/user/repo)`,
 

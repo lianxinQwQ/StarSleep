@@ -57,7 +57,8 @@ install options:
   --root <part>     Root partition (e.g. /dev/sda2)
   --disk <dev>      Whole disk device (e.g. /dev/sda, auto-partition)
   --profile <name>  Preset configuration (minimal/gnome/dev, default: dev)
-  --name <name>      Display name in UEFI firmware boot menu (default: StarSleep)
+  --name <name>     Display name in UEFI firmware boot menu (default: StarSleep)
+  --branch <branch>  Git branch where preset configs reside (default: main)
   --force           Skip confirmation prompts, force format
   --repo <URL>      Git repository URL for preset configs (optional, e.g. https://github.com/user/repo)`,
 
