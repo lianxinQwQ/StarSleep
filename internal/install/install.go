@@ -14,6 +14,8 @@ import (
 	"starsleep/internal/config"
 	"starsleep/internal/i18n"
 	"starsleep/internal/util"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -193,36 +195,68 @@ func writeConfigMeta() {
 		util.Fatal("无法读取配置: " + err.Error())
 	}
 
-	// 构建新的 meta 段
-	metaLines := fmt.Sprintf(`meta:
-  work_dir: %s
-  snapshot_dir: %s/snapshots
-  pkg_cache: %s/shared/pacman-cache
-  db_path: var/lib/pacman
-`, TargetStarsleepMount, TargetStarsleepMount, TargetStarsleepMount)
-
-	content := string(data)
-
-	// 找到已有的 meta: 行位置，替换整段；没找到则追加到文件头
-	idx := strings.Index(content, "\nmeta:")
-	if idx >= 0 {
-		// 找到下一非缩进行（即下一个顶层 key）或文件尾
-		rest := content[idx+1:]
-		end := strings.IndexFunc(rest, func(r rune) bool {
-			return r == '\n' && !strings.HasPrefix(rest[strings.IndexRune(rest, r)+1:], " ")
-		})
-		if end > 0 {
-			content = content[:idx] + metaLines + rest[end:]
-		} else {
-			content = content[:idx] + "\n" + metaLines
-		}
-	} else {
-		content = metaLines + "\n" + content
+	updated, err := injectConfigMeta(data, installMetaConfig())
+	if err != nil {
+		util.Fatal("更新配置 meta 段失败: " + err.Error())
 	}
 
-	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(configPath, updated, 0o644); err != nil {
 		util.Fatal("写入配置 meta 段失败: " + err.Error())
 	}
+}
+
+func installMetaConfig() config.MetaConfig {
+	return config.MetaConfig{
+		WorkDir:     TargetStarsleepMount,
+		SnapshotDir: TargetStarsleepMount + "/snapshots",
+		PkgCache:    TargetStarsleepMount + "/shared/pacman-cache",
+		DBPath:      "var/lib/pacman",
+	}
+}
+
+func injectConfigMeta(data []byte, meta config.MetaConfig) ([]byte, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	if len(doc.Content) == 0 {
+		doc.Content = []*yaml.Node{{Kind: yaml.MappingNode}}
+	}
+
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("config.yaml top level must be a mapping")
+	}
+
+	content := make([]*yaml.Node, 0, len(root.Content))
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value == "meta" {
+			continue
+		}
+		content = append(content, root.Content[i], root.Content[i+1])
+	}
+	root.Content = append([]*yaml.Node{
+		scalarNode("meta"),
+		metaConfigNode(meta),
+	}, content...)
+
+	return yaml.Marshal(&doc)
+}
+
+func metaConfigNode(meta config.MetaConfig) *yaml.Node {
+	return &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			scalarNode("work_dir"), scalarNode(meta.WorkDir),
+			scalarNode("snapshot_dir"), scalarNode(meta.SnapshotDir),
+			scalarNode("pkg_cache"), scalarNode(meta.PkgCache),
+			scalarNode("db_path"), scalarNode(meta.DBPath),
+		},
+	}
+}
+
+func scalarNode(value string) *yaml.Node {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
 }
 
 // copyProductToTarget 将 flatDir 的内容复制到目标 @ 子卷

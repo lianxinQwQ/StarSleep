@@ -12,7 +12,7 @@ import (
 )
 
 // Dispatch 根据配置的 helper 类型分发同步操作
-func Dispatch(root, configDir, dbPath string, cfg *config.LayerConfig, expectedPkgs, expectedSvcs []string) {
+func Dispatch(root, configDir, dbPath, paruCacheDir string, cfg *config.LayerConfig, expectedPkgs, expectedSvcs []string) {
 	printSyncHeader(cfg, root)
 	switch cfg.Helper {
 	case "pacstrap":
@@ -20,7 +20,7 @@ func Dispatch(root, configDir, dbPath string, cfg *config.LayerConfig, expectedP
 	case "pacman":
 		SyncPacman(root, dbPath, cfg.Packages, expectedPkgs)
 	case "paru":
-		SyncParu(root, dbPath, cfg.Packages, expectedPkgs)
+		SyncParu(root, dbPath, paruCacheDir, cfg.Packages, expectedPkgs)
 	case "enable_service":
 		SyncEnableService(root, cfg.Services, expectedSvcs)
 	case "copy_files":

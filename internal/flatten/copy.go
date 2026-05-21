@@ -12,6 +12,8 @@ import (
 
 const ficlone = 0x40049409
 
+var syscallWrite = syscall.Write
+
 func reflinkCopy(st *FlattenStats, src, dst string, perm uint32, srcStat *syscall.Stat_t) error {
 	os.RemoveAll(dst)
 	srcFd, err := syscall.Open(src, syscall.O_RDONLY, 0)
@@ -43,7 +45,7 @@ func copyFallback(srcFd, dstFd int) error {
 	for {
 		n, err := syscall.Read(srcFd, buf)
 		if n > 0 {
-			if _, werr := syscall.Write(dstFd, buf[:n]); werr != nil {
+			if werr := writeAll(dstFd, buf[:n]); werr != nil {
 				return werr
 			}
 		}
@@ -57,6 +59,22 @@ func copyFallback(srcFd, dstFd int) error {
 			return err
 		}
 	}
+}
+
+func writeAll(fd int, data []byte) error {
+	for len(data) > 0 {
+		n, err := syscallWrite(fd, data)
+		if n > 0 {
+			data = data[n:]
+		}
+		if err != nil {
+			if err == syscall.EAGAIN || err == syscall.EINTR {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 func ioctlFiclone(fd int, request uintptr, arg int) error {

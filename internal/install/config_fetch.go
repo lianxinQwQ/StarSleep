@@ -3,6 +3,9 @@ package install
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
 
 	"starsleep/internal/i18n"
 	"starsleep/internal/util"
@@ -21,16 +24,54 @@ func fetchProfile(profile, repoURL, branch string) {
 
 	configDir := TargetConfigDir
 
-	// curl 管道解压：只提取 temp-config/<profile>/ 下的内容
-	// GitHub archive 内部路径: <repo>-<branch>/temp-config/<profile>/
-	// --strip-components=3 去掉前三层目录，得到 config.yaml layers/ files/
-	pipe := fmt.Sprintf(
-		`set -o pipefail && curl -Lfs -A 'starsleep' '%s' | tar -xz --wildcards --strip-components=3 -C '%s' '*/temp-config/%s/'`,
-		archiveURL, configDir, profile,
-	)
-	if err := util.Run("sh", "-c", pipe); err != nil {
+	if err := fetchProfileArchive(archiveURL, configDir, profile); err != nil {
 		util.Fatal(i18n.T("install.fetch.failed", profile, err, configDir))
 	}
 
 	fmt.Println(i18n.T("install.fetch.done"))
+}
+
+func fetchProfileArchive(archiveURL, configDir, profile string) error {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		return err
+	}
+
+	reader, writer := io.Pipe()
+	curl := exec.Command("curl", "-Lfs", "-A", "starsleep", "--", archiveURL)
+	tar := exec.Command("tar",
+		"-xz",
+		"--wildcards",
+		"--strip-components=3",
+		"-C", configDir,
+		"--",
+		fmt.Sprintf("*/temp-config/%s/", profile),
+	)
+
+	curl.Stdout = writer
+	curl.Stderr = os.Stderr
+	tar.Stdin = reader
+	tar.Stdout = os.Stdout
+	tar.Stderr = os.Stderr
+
+	if err := tar.Start(); err != nil {
+		reader.Close()
+		writer.Close()
+		return err
+	}
+	if err := curl.Start(); err != nil {
+		writer.CloseWithError(err)
+		reader.CloseWithError(err)
+		tar.Wait()
+		return err
+	}
+
+	curlErr := curl.Wait()
+	writer.CloseWithError(curlErr)
+	tarErr := tar.Wait()
+	reader.Close()
+
+	if curlErr != nil {
+		return curlErr
+	}
+	return tarErr
 }

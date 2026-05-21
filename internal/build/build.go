@@ -49,7 +49,16 @@ func Run(args []string) {
 		}
 	}
 
-	workDir := config.DefaultWorkDir
+	mainCfg, cfgErr := config.LoadMainConfig(configDir)
+	if cfgErr != nil {
+		util.Fatal(i18n.T("load.config.failed", cfgErr))
+	}
+
+	paths := resolveBuildPaths(mainCfg)
+	workDir := paths.workDir
+	snapshotDir := paths.snapshotDir
+	pkgCache := paths.pkgCache
+	paruCache := paths.paruCache
 	flatDir := filepath.Join(workDir, "work/flat")
 	merged := filepath.Join(workDir, "work/merged")
 	ovlWork := filepath.Join(workDir, "work/ovl_work")
@@ -87,9 +96,9 @@ func Run(args []string) {
 	}
 
 	// 加载配置
-	layers, mainCfg, err := config.LoadAllLayers(configDir)
-	if err != nil {
-		util.Fatal(i18n.T("load.config.failed", err))
+	layers, lErr := config.LoadLayers(mainCfg, configDir)
+	if lErr != nil {
+		util.Fatal(i18n.T("load.config.failed", lErr))
 	}
 
 	util.LogMsg("%s", i18n.T("build.start"))
@@ -138,14 +147,14 @@ func Run(args []string) {
 		}
 
 		// 绑定挂载包缓存
-		cacheSrc := filepath.Join(workDir, "shared/pacman-cache")
+		cacheSrc := pkgCache
 		cacheDst := filepath.Join(merged, "var/cache/pacman/pkg")
 		os.MkdirAll(cacheDst, 0o755)
 		syscall.Mount(cacheSrc, cacheDst, "", syscall.MS_BIND, "")
 
 		// paru 类型额外挂载 paru 缓存
 		if cfg.Helper == "chroot-paru" {
-			paruCacheSrc := filepath.Join(workDir, "shared/paru-cache")
+			paruCacheSrc := paruCache
 			paruCacheDst := filepath.Join(merged, "home/builder/.cache/paru/clone")
 			os.MkdirAll(paruCacheDst, 0o755)
 			syscall.Mount(paruCacheSrc, paruCacheDst, "", syscall.MS_BIND, "")
@@ -156,23 +165,24 @@ func Run(args []string) {
 		case "pacstrap", "chroot-cmd", "chroot-pacman", "chroot-paru":
 			// 这些工具内部管理 /proc /sys /dev 挂载
 		default:
-			bindVFS(merged)
+			if err := bindVFS(merged); err != nil {
+				syscall.Sync()
+				cleanupMergedMount(merged)
+				os.RemoveAll(ovlWorkDir)
+				os.RemoveAll(upper)
+				os.Rename(upperBak, upper)
+				util.Fatal(err.Error())
+			}
 		}
 
 		// 调用同步
 		expectedPkgs := config.BuildCumulativePkgs(layers, i)
 		expectedSvcs := config.BuildCumulativeServices(layers, i)
-		layerOk := runSyncSafe(merged, configDir, dbPath, cfg, expectedPkgs, expectedSvcs)
+		layerOk := runSyncSafe(merged, configDir, dbPath, paruCache, cfg, expectedPkgs, expectedSvcs)
 
 		// 卸载
 		syscall.Sync()
-		if err := unmountRecursive(merged); err != nil {
-			util.LogMsg("%s", i18n.T("unmount.fallback"))
-			syscall.Unmount(merged, syscall.MNT_DETACH)
-			for retry := 0; util.IsMountpoint(merged) && retry < 10; retry++ {
-				time.Sleep(500 * time.Millisecond)
-			}
-		}
+		cleanupMergedMount(merged)
 		os.RemoveAll(ovlWorkDir)
 
 		if !layerOk {
@@ -208,24 +218,50 @@ func Run(args []string) {
 
 	// 生成快照
 	snapshotName := "snapshot-" + ts
-	snapshotDir := filepath.Join(workDir, "snapshots", snapshotName)
+	snapshotPath := filepath.Join(snapshotDir, snapshotName)
 	util.LogMsg(i18n.T("create.snapshot"), snapshotName)
-	if err := util.Run("btrfs", "subvolume", "snapshot", flatDir, snapshotDir); err != nil {
+	if err := util.Run("btrfs", "subvolume", "snapshot", flatDir, snapshotPath); err != nil {
 		util.Fatal(i18n.T("snapshot.failed", err))
 	}
 
-	// 更新 latest 符号链接
-	latestLink := filepath.Join(workDir, "snapshots/latest")
+	latestLink := filepath.Join(snapshotDir, "latest")
 	os.Remove(latestLink)
-	os.Symlink(snapshotDir, latestLink)
+	os.Symlink(snapshotPath, latestLink)
 
 	util.LogMsg("%s", i18n.T("build.done"))
-	util.LogMsg(i18n.T("snapshot.path"), snapshotDir)
+	util.LogMsg(i18n.T("snapshot.path"), snapshotPath)
 	util.LogMsg(i18n.T("snapshot.link"), workDir, snapshotName)
 }
 
+type buildPaths struct {
+	workDir     string
+	snapshotDir string
+	pkgCache    string
+	paruCache   string
+}
+
+func resolveBuildPaths(mc *config.MainConfig) buildPaths {
+	workDir := config.ResolveWorkDir(mc, config.DefaultWorkDir)
+	return buildPaths{
+		workDir:     workDir,
+		snapshotDir: config.ResolveSnapshotDir(mc, filepath.Join(workDir, "snapshots")),
+		pkgCache:    config.ResolvePkgCache(mc, filepath.Join(workDir, "shared/pacman-cache")),
+		paruCache:   filepath.Join(workDir, "shared/paru-cache"),
+	}
+}
+
+func cleanupMergedMount(merged string) {
+	if err := unmountRecursive(merged); err != nil {
+		util.LogMsg("%s", i18n.T("unmount.fallback"))
+		syscall.Unmount(merged, syscall.MNT_DETACH)
+		for retry := 0; util.IsMountpoint(merged) && retry < 10; retry++ {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+}
+
 // bindVFS 绑定挂载虚拟文件系统到目标根
-func bindVFS(root string) {
+func bindVFS(root string) error {
 	mounts := []struct{ src, dst string }{
 		{"/proc", filepath.Join(root, "proc")},
 		{"/sys", filepath.Join(root, "sys")},
@@ -234,13 +270,13 @@ func bindVFS(root string) {
 	for _, m := range mounts {
 		os.MkdirAll(m.dst, 0o755)
 		if err := syscall.Mount(m.src, m.dst, "", syscall.MS_BIND, ""); err != nil {
-			util.Fatal(i18n.T("mount.vfs.failed", m.src, m.dst, err))
+			return fmt.Errorf("%s", i18n.T("mount.vfs.failed", m.src, m.dst, err))
 		}
 	}
 	devpts := filepath.Join(root, "dev/pts")
 	os.MkdirAll(devpts, 0o755)
 	if err := syscall.Mount("devpts", devpts, "devpts", 0, ""); err != nil {
-		util.Fatal(i18n.T("mount.devpts.failed", devpts, err))
+		return fmt.Errorf("%s", i18n.T("mount.devpts.failed", devpts, err))
 	}
 
 	src := "/etc/resolv.conf"
@@ -249,6 +285,7 @@ func bindVFS(root string) {
 		os.MkdirAll(filepath.Dir(dst), 0o755)
 		os.WriteFile(dst, data, 0o644)
 	}
+	return nil
 }
 
 // unmountRecursive 递归卸载指定路径下的所有挂载点
@@ -292,7 +329,7 @@ func isBtrfsSubvolume(path string) bool {
 }
 
 // runSyncSafe 安全地调用 helper.Dispatch，捕获 fatal panic 并返回是否成功
-func runSyncSafe(root, configDir, dbPath string, cfg *config.LayerConfig, expectedPkgs, expectedSvcs []string) (ok bool) {
+func runSyncSafe(root, configDir, dbPath, paruCacheDir string, cfg *config.LayerConfig, expectedPkgs, expectedSvcs []string) (ok bool) {
 	oldMode := util.FatalPanicMode.Load()
 	util.FatalPanicMode.Store(true)
 	defer func() {
@@ -306,6 +343,6 @@ func runSyncSafe(root, configDir, dbPath string, cfg *config.LayerConfig, expect
 			ok = false
 		}
 	}()
-	helper.Dispatch(root, configDir, dbPath, cfg, expectedPkgs, expectedSvcs)
+	helper.Dispatch(root, configDir, dbPath, paruCacheDir, cfg, expectedPkgs, expectedSvcs)
 	return true
 }

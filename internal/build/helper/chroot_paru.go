@@ -36,7 +36,7 @@ func ensureBuilderChroot(env []string, root, dbPath string) {
 	// 清除 chroot 内残留 pacman 锁文件，防止 paru 初始化 libalpm 失败
 	os.Remove(filepath.Join(root, dbPath, "db.lck"))
 }
-func ensureBuilderLive() {
+func ensureBuilderLive(paruCacheDir string) {
 	if _, err := util.RunSilent("id", "builder"); err != nil {
 		fmt.Println(i18n.T("chroot.paru.create.user"))
 		// 先确保同名主组存在，再创建用户（防止 chown builder:builder 失败）
@@ -57,7 +57,6 @@ func ensureBuilderLive() {
 	os.MkdirAll("/etc/sudoers.d", 0o755)
 	os.WriteFile("/etc/sudoers.d/builder", []byte("builder ALL=(ALL) NOPASSWD: ALL\n"), 0o440)
 	// 确保 paru 缓存目录属于 builder
-	paruCacheDir := filepath.Join(config.DefaultWorkDir, "shared/paru-cache")
 	util.Run("chown", "builder:builder", paruCacheDir)
 	util.Run("install", "-d", "-o", "builder", "-g", "builder", paruCacheDir)
 	// 配置 builder 的 git 全局信任，防止 cloneDir 下仓库触发 safe.directory 检查
@@ -67,7 +66,7 @@ func ensureBuilderLive() {
 
 // EnsureBuilderUser 导出的 ensureBuilderLive，供 maintain 等外部包使用
 func EnsureBuilderUser() {
-	ensureBuilderLive()
+	ensureBuilderLive(filepath.Join(config.DefaultWorkDir, "shared/paru-cache"))
 }
 
 // SyncChrootParu 通过 arch-chroot 在目标根中使用 paru 安装 AUR 软件包
@@ -109,7 +108,7 @@ func ChrootParuLive(envVars []config.EnvVar, pkgs []string) {
 	resolvedEnv := config.ResolveEnv(envVars)
 	fmt.Println(i18n.T("chroot.paru.start"))
 
-	ensureBuilderLive()
+	ensureBuilderLive(filepath.Join(config.DefaultWorkDir, "shared/paru-cache"))
 
 	args := []string{"-u", "builder", "--",
 		"paru", "-S", "--needed", "--noconfirm"}

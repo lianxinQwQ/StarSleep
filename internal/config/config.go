@@ -190,6 +190,32 @@ func ValidateLayerFiles(configDir string, declaredFiles []string) error {
 	return nil
 }
 
+// LoadLayers 按 config.yaml 声明的顺序加载所有层配置
+//
+// 与 LoadAllLayers 不同，此函数接收已加载的 MainConfig 以避免重复读取主配置文件。
+// 这允许调用方先加载主配置以解析 meta 段（如 work_dir），再加载层配置。
+//
+// @param mc 已加载的主配置
+// @param configDir 配置目录路径
+// @return 解析后的层配置切片及可能的错误
+func LoadLayers(mc *MainConfig, configDir string) ([]*LayerConfig, error) {
+	if err := ValidateLayerFiles(configDir, mc.Layers); err != nil {
+		return nil, err
+	}
+
+	layersDir := filepath.Join(configDir, "layers")
+	var configs []*LayerConfig
+	for _, name := range mc.Layers {
+		path := filepath.Join(layersDir, name)
+		steps, err := loadLayerFile(path)
+		if err != nil {
+			return nil, err
+		}
+		configs = append(configs, steps...)
+	}
+	return configs, nil
+}
+
 // LoadAllLayers 加载配置目录下所有层配置，按 config.yaml 声明的顺序
 //
 // 从 config.yaml 读取层文件列表，校验文件一致性后按序加载。
@@ -202,22 +228,11 @@ func LoadAllLayers(configDir string) ([]*LayerConfig, *MainConfig, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-
-	if err := ValidateLayerFiles(configDir, mc.Layers); err != nil {
+	layers, err := LoadLayers(mc, configDir)
+	if err != nil {
 		return nil, nil, err
 	}
-
-	layersDir := filepath.Join(configDir, "layers")
-	var configs []*LayerConfig
-	for _, name := range mc.Layers {
-		path := filepath.Join(layersDir, name)
-		steps, err := loadLayerFile(path)
-		if err != nil {
-			return nil, nil, err
-		}
-		configs = append(configs, steps...)
-	}
-	return configs, mc, nil
+	return layers, mc, nil
 }
 
 // LoadInheritList 从主配置中获取继承路径列表
