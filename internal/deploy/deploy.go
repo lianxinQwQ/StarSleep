@@ -28,12 +28,34 @@ const (
 	KernelOpts = "lsm=landlock,lockdown,yama,integrity,apparmor,bpf quiet splash loglevel=3 systemd.show_status=auto rd.udev.log_level=3 rw"
 )
 
+type Options struct {
+	ConfigDir       string
+	WorkDir         string
+	BootDir         string
+	EntryDir        string
+	RootUUID        string
+	EntryTitle      string
+	SubvolPrefix    string
+	KernelOpts      string
+	UseInheritStore bool
+}
+
 // Run 执行快照部署命令
 func Run(args []string) {
 	util.CheckRoot()
+	RunWithOptions(args, Options{})
+}
+
+func RunWithOptions(args []string, opts Options) {
 	configDir, remaining := config.ParseConfigFlags(config.DefaultConfigDir, args)
+	if opts.ConfigDir != "" {
+		configDir = opts.ConfigDir
+	}
 
 	workDir := config.DefaultWorkDir
+	if opts.WorkDir != "" {
+		workDir = opts.WorkDir
+	}
 	useInheritStore := false
 
 	if len(remaining) > 0 {
@@ -51,6 +73,9 @@ func Run(args []string) {
 			useInheritStore = true
 			remaining = remaining[1:]
 		}
+	}
+	if opts.UseInheritStore {
+		useInheritStore = true
 	}
 
 	var target string
@@ -91,17 +116,25 @@ func Run(args []string) {
 		ApplyInheritList(mc, target)
 	}
 
-	DeploySnapshot(target, snapName)
+	DeploySnapshotWithOptions(target, snapName, opts)
 
 	fmt.Println(i18n.T("deploy.separator"))
 	fmt.Println(i18n.T("deploy.done"))
 	fmt.Println()
 	fmt.Println(i18n.T("deploy.reboot.hint"))
-	fmt.Println(i18n.T("deploy.reboot.entry", EntryTitle, snapName))
+	entryTitle := EntryTitle
+	if opts.EntryTitle != "" {
+		entryTitle = opts.EntryTitle
+	}
+	fmt.Println(i18n.T("deploy.reboot.entry", entryTitle, snapName))
 }
 
 // DeploySnapshot 将快照的内核和 initramfs 部署到 boot 分区并生成引导条目
 func DeploySnapshot(target, snapName string) {
+	DeploySnapshotWithOptions(target, snapName, Options{})
+}
+
+func DeploySnapshotWithOptions(target, snapName string, opts Options) {
 	snapBoot := filepath.Join(target, "boot")
 
 	if _, err := os.Stat(snapBoot); err != nil {
@@ -124,7 +157,28 @@ func DeploySnapshot(target, snapName string) {
 	fmt.Println(i18n.T("deploy.initramfs", filepath.Base(initramfs)))
 	fmt.Println(i18n.T("deploy.separator"))
 
-	bootDest := filepath.Join(BootDir, snapName)
+	bootDir := BootDir
+	if opts.BootDir != "" {
+		bootDir = opts.BootDir
+	}
+	entryDir := EntryDir
+	if opts.EntryDir != "" {
+		entryDir = opts.EntryDir
+	}
+	entryTitle := EntryTitle
+	if opts.EntryTitle != "" {
+		entryTitle = opts.EntryTitle
+	}
+	subvolPrefix := SubvolPrefix
+	if opts.SubvolPrefix != "" {
+		subvolPrefix = opts.SubvolPrefix
+	}
+	kernelOpts := KernelOpts
+	if opts.KernelOpts != "" {
+		kernelOpts = opts.KernelOpts
+	}
+
+	bootDest := filepath.Join(bootDir, snapName)
 	os.MkdirAll(bootDest, 0o755)
 
 	copyFile(vmlinuz, filepath.Join(bootDest, "vmlinuz"))
@@ -142,25 +196,37 @@ func DeploySnapshot(target, snapName string) {
 		fmt.Sprintf("initrd /starsleep/%s/initramfs-linux.img", snapName))
 
 	confName := fmt.Sprintf("starsleep-%s.conf", snapName)
-	confPath := filepath.Join(EntryDir, confName)
+	confPath := filepath.Join(entryDir, confName)
 
-	os.MkdirAll(EntryDir, 0o755)
-	rootUUID := detectRootUUID()
-	entry := fmt.Sprintf(`title %s - %s
-linux /starsleep/%s/vmlinuz
-%s
-options root="UUID=%s" rootflags=subvol=/%s/%s %s
-`,
-		EntryTitle, snapName,
-		snapName,
-		strings.Join(initrdLines, "\n"),
-		rootUUID, SubvolPrefix, snapName, KernelOpts)
+	os.MkdirAll(entryDir, 0o755)
+	rootUUID := opts.RootUUID
+	if rootUUID == "" {
+		rootUUID = detectRootUUID()
+	}
+	entry := bootEntryContent(Options{
+		EntryTitle:   entryTitle,
+		RootUUID:     rootUUID,
+		SubvolPrefix: subvolPrefix,
+		KernelOpts:   kernelOpts,
+	}, snapName, strings.Join(initrdLines, "\n"))
 
 	if err := os.WriteFile(confPath, []byte(entry), 0o644); err != nil {
 		util.Fatal(i18n.T("write.entry.failed", err))
 	}
 
 	fmt.Println(i18n.T("deploy.entry.generated", confPath))
+}
+
+func bootEntryContent(opts Options, snapName, initrdLines string) string {
+	return fmt.Sprintf(`title %s - %s
+linux /starsleep/%s/vmlinuz
+%s
+options root="UUID=%s" rootflags=subvol=/%s/%s %s
+`,
+		opts.EntryTitle, snapName,
+		snapName,
+		initrdLines,
+		opts.RootUUID, opts.SubvolPrefix, snapName, opts.KernelOpts)
 }
 
 func listBootEntries() {

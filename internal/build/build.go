@@ -27,9 +27,24 @@ import (
 //  2. 清理工作区（可选）
 //  3. 加载配置并逐层构建
 //  4. 生成 Btrfs 快照并应用继承列表
+type Options struct {
+	ConfigDir   string
+	WorkDir     string
+	SnapshotDir string
+	PkgCache    string
+	ParuCache   string
+}
+
 func Run(args []string) {
+	RunWithOptions(args, Options{})
+}
+
+func RunWithOptions(args []string, opts Options) {
 	util.CheckRoot()
 	configDir, remaining := config.ParseConfigFlags(config.DefaultConfigDir, args)
+	if opts.ConfigDir != "" {
+		configDir = opts.ConfigDir
+	}
 
 	clean := false
 	doVerify := false
@@ -54,7 +69,7 @@ func Run(args []string) {
 		util.Fatal(i18n.T("load.config.failed", cfgErr))
 	}
 
-	paths := resolveBuildPaths(mainCfg)
+	paths := resolveBuildPaths(mainCfg, opts)
 	workDir := paths.workDir
 	snapshotDir := paths.snapshotDir
 	pkgCache := paths.pkgCache
@@ -240,13 +255,28 @@ type buildPaths struct {
 	paruCache   string
 }
 
-func resolveBuildPaths(mc *config.MainConfig) buildPaths {
+func resolveBuildPaths(mc *config.MainConfig, opts Options) buildPaths {
 	workDir := config.ResolveWorkDir(mc, config.DefaultWorkDir)
+	if opts.WorkDir != "" {
+		workDir = opts.WorkDir
+	}
+	snapshotDir := config.ResolveSnapshotDir(mc, filepath.Join(workDir, "snapshots"))
+	if opts.SnapshotDir != "" {
+		snapshotDir = opts.SnapshotDir
+	}
+	pkgCache := config.ResolvePkgCache(mc, filepath.Join(workDir, "shared/pacman-cache"))
+	if opts.PkgCache != "" {
+		pkgCache = opts.PkgCache
+	}
+	paruCache := filepath.Join(workDir, "shared/paru-cache")
+	if opts.ParuCache != "" {
+		paruCache = opts.ParuCache
+	}
 	return buildPaths{
 		workDir:     workDir,
-		snapshotDir: config.ResolveSnapshotDir(mc, filepath.Join(workDir, "snapshots")),
-		pkgCache:    config.ResolvePkgCache(mc, filepath.Join(workDir, "shared/pacman-cache")),
-		paruCache:   filepath.Join(workDir, "shared/paru-cache"),
+		snapshotDir: snapshotDir,
+		pkgCache:    pkgCache,
+		paruCache:   paruCache,
 	}
 }
 

@@ -69,7 +69,8 @@ sudo starsleep init
 ├── layers/            # 各层 diff 数据 (OverlayFS upper)
 ├── snapshots/         # 构建产物快照 (Btrfs subvolume)
 ├── shared/            # 跨构建持久化数据
-│   ├── home/
+│   ├── home/          # 用户目录 (Btrfs subvolume)
+│   ├── root/          # root 目录 (Btrfs subvolume)
 │   ├── pacman-cache/  # pacman 包缓存 (Btrfs subvolume)
 │   └── paru-cache/    # paru 包缓存 (Btrfs subvolume)
 ├── config/            # 配置文件
@@ -339,4 +340,3 @@ commands:                # helper 为 chroot-cmd 时使用
 ## 许可证
 
 BSD-3-Clause
-

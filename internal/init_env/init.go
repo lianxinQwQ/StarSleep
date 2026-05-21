@@ -14,6 +14,12 @@ import (
 	"starsleep/internal/util"
 )
 
+type Options struct {
+	WorkDir string
+}
+
+type commandRunner func(name string, args ...string) error
+
 // Run 执行环境初始化命令
 func Run(args []string) {
 	util.CheckRoot()
@@ -49,34 +55,8 @@ func Run(args []string) {
 	fmt.Println(i18n.T("init.start"))
 	fmt.Println(i18n.T("init.workdir", workDir))
 
-	// ── 创建工作目录结构 ──
-	dirs := []string{
-		filepath.Join(workDir, "layers"),
-		filepath.Join(workDir, "snapshots"),
-		filepath.Join(workDir, "shared"),
-		filepath.Join(workDir, "shared/home"),
-		filepath.Join(workDir, "config/layers"),
-		filepath.Join(workDir, "config/files"),
-		filepath.Join(workDir, "config", config.InheritDir),
-		filepath.Join(workDir, "work/merged"),
-		filepath.Join(workDir, "work/ovl_work"),
-		filepath.Join(workDir, "logs"),
-	}
-	for _, d := range dirs {
-		os.MkdirAll(d, 0o755)
-	}
-
-	// 共享缓存目录创建为 Btrfs 子卷（不存在时）
-	for _, subvol := range []string{
-		filepath.Join(workDir, "shared/pacman-cache"),
-		filepath.Join(workDir, "shared/paru-cache"),
-	} {
-		if _, err := os.Stat(subvol); err == nil {
-			continue
-		}
-		if err := util.Run("btrfs", "subvolume", "create", subvol); err != nil {
-			util.Fatal(i18n.T("create.subvol.failed", subvol, err))
-		}
+	if err := InitializeWorkspace(Options{WorkDir: workDir}); err != nil {
+		util.Fatal(err.Error())
 	}
 
 	// 如果指定了外部配置目录，复制到默认位置
@@ -93,4 +73,69 @@ func Run(args []string) {
 	fmt.Println(i18n.T("init.tree", workDir))
 	fmt.Println()
 	fmt.Println(i18n.T("init.next"))
+}
+
+func InitializeWorkspace(opts Options) error {
+	workDir := opts.WorkDir
+	if workDir == "" {
+		workDir = config.DefaultWorkDir
+	}
+	for _, d := range WorkspaceDirs(workDir) {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			return err
+		}
+	}
+	for _, subvol := range WorkspaceSubvolumes(workDir) {
+		if err := ensureBtrfsSubvolume(subvol, util.Run); err != nil {
+			return err
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(workDir, "shared/home/builder/.cache/paru/clone"), 0o755); err != nil {
+		return err
+	}
+	if err := os.Chmod(filepath.Join(workDir, "shared/root"), 0o700); err != nil {
+		return err
+	}
+	return nil
+}
+
+func WorkspaceDirs(workDir string) []string {
+	return []string{
+		workDir,
+		filepath.Join(workDir, "layers"),
+		filepath.Join(workDir, "snapshots"),
+		filepath.Join(workDir, "shared"),
+		filepath.Join(workDir, "config/layers"),
+		filepath.Join(workDir, "config/files"),
+		filepath.Join(workDir, "config", config.InheritDir),
+		filepath.Join(workDir, "work/merged"),
+		filepath.Join(workDir, "work/ovl_work"),
+		filepath.Join(workDir, "logs"),
+		filepath.Join(workDir, "var/log"),
+		filepath.Join(workDir, "var/cache"),
+	}
+}
+
+func WorkspaceSubvolumes(workDir string) []string {
+	return []string{
+		filepath.Join(workDir, "shared/home"),
+		filepath.Join(workDir, "shared/root"),
+		filepath.Join(workDir, "shared/pacman-cache"),
+		filepath.Join(workDir, "shared/paru-cache"),
+	}
+}
+
+func ensureBtrfsSubvolume(path string, run commandRunner) error {
+	if _, err := os.Stat(path); err == nil {
+		if err := run("btrfs", "subvolume", "show", path); err == nil {
+			return nil
+		}
+		return fmt.Errorf("路径已存在但不是 Btrfs 子卷: %s", path)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := run("btrfs", "subvolume", "create", path); err != nil {
+		return fmt.Errorf("%s", i18n.T("create.subvol.failed", path, err))
+	}
+	return nil
 }

@@ -205,8 +205,7 @@ func createSubvolLayout(rootPart string) string {
 		util.Fatal(fmt.Sprintf("获取根分区 UUID 失败: %v", err))
 	}
 
-	// Btrfs 子卷布局 (参考 openSUSE/Ubuntu 风格)
-	subvols := []string{"@", "@home", "@var", "starsleep"}
+	subvols := installTopLevelSubvolumes()
 	for _, sv := range subvols {
 		subvolPath := filepath.Join(TargetMount, sv)
 		fmt.Println(i18n.T("install.create.subvol", sv))
@@ -217,4 +216,8 @@ func createSubvolLayout(rootPart string) string {
 
 	fmt.Println(i18n.T("install.subvol.layout"))
 	return rootUUID
+}
+
+func installTopLevelSubvolumes() []string {
+	return []string{"starsleep"}
 }

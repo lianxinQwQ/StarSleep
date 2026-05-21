@@ -11,11 +11,10 @@ import (
 	"strings"
 
 	"starsleep/internal/build"
-	"starsleep/internal/config"
+	"starsleep/internal/deploy"
 	"starsleep/internal/i18n"
+	"starsleep/internal/init_env"
 	"starsleep/internal/util"
-
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -118,28 +117,29 @@ func Run(args []string) {
 	mountStarsleepSubvol(rootUUID)
 
 	// ── 阶段 D: 拉取预设配置 ──
+	if err := init_env.InitializeWorkspace(init_env.Options{WorkDir: TargetStarsleepMount}); err != nil {
+		util.Fatal(err.Error())
+	}
 	fetchProfile(profile, repoURL, branch)
-	writeConfigMeta()
 
 	// ── 阶段 E: 初始化工作目录 + 构建系统 ──
 	runBuild()
+	snapshotPath, snapshotName := latestSnapshot(TargetStarsleepMount)
 
-	// ── 阶段 F: 复制构建产物到目标根子卷 ──
-	copyProductToTarget(rootUUID)
-
-	// ── 阶段 G: 生成 fstab ──
-	generateFstab(rootUUID, bootPart)
-
-	// ── 阶段 H: 初始化 systemd-boot ──
-	mc, err := config.LoadMainConfig(TargetConfigDir)
-	snapshotName := "snapshot-initial"
-	if err == nil {
-		_ = mc
-	}
 	initBootloader(TargetBootMount, rootUUID, snapshotName, entryName)
 
-	// ── 阶段 I: 创建共享目录 ──
-	initSharedDirs()
+	deploy.RunWithOptions([]string{snapshotPath}, deploy.Options{
+		ConfigDir:    TargetConfigDir,
+		WorkDir:      TargetStarsleepMount,
+		BootDir:      filepath.Join(TargetBootMount, "starsleep"),
+		EntryDir:     filepath.Join(TargetBootMount, "loader", "entries"),
+		RootUUID:     rootUUID,
+		EntryTitle:   entryName,
+		SubvolPrefix: "starsleep/snapshots",
+	})
+
+	// ── 阶段 F: 生成 fstab ──
+	generateFstab(snapshotPath, rootUUID, bootPart)
 
 	// ── 卸载并清理 ──
 	util.Run("umount", TargetStarsleepMount)
@@ -171,148 +171,34 @@ func mountStarsleepSubvol(rootUUID string) {
 	if err := util.Run("mount", "-o", "subvol=starsleep,compress=zstd", "UUID="+rootUUID, TargetStarsleepMount); err != nil {
 		util.Fatal(fmt.Sprintf("挂载 starsleep 子卷失败: %v", err))
 	}
-	// 预创建 starsleep 目录结构
-	dirs := []string{
-		filepath.Join(TargetStarsleepMount, "shared"),
-		filepath.Join(TargetStarsleepMount, "shared/home"),
-		filepath.Join(TargetStarsleepMount, "shared/pacman-cache"),
-		filepath.Join(TargetStarsleepMount, "shared/paru-cache"),
-		filepath.Join(TargetStarsleepMount, "shared/root"),
-		filepath.Join(TargetStarsleepMount, "var"),
-		filepath.Join(TargetStarsleepMount, "var/log"),
-		filepath.Join(TargetStarsleepMount, "var/cache"),
-	}
-	for _, d := range dirs {
-		os.MkdirAll(d, 0o755)
-	}
-}
-
-// writeConfigMeta 将目标路径写入 config.yaml 的 meta 段，让 build 使用目标路径
-func writeConfigMeta() {
-	configPath := filepath.Join(TargetConfigDir, "config.yaml")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		util.Fatal("无法读取配置: " + err.Error())
-	}
-
-	updated, err := injectConfigMeta(data, installMetaConfig())
-	if err != nil {
-		util.Fatal("更新配置 meta 段失败: " + err.Error())
-	}
-
-	if err := os.WriteFile(configPath, updated, 0o644); err != nil {
-		util.Fatal("写入配置 meta 段失败: " + err.Error())
-	}
-}
-
-func installMetaConfig() config.MetaConfig {
-	return config.MetaConfig{
-		WorkDir:     TargetStarsleepMount,
-		SnapshotDir: TargetStarsleepMount + "/snapshots",
-		PkgCache:    TargetStarsleepMount + "/shared/pacman-cache",
-		DBPath:      "var/lib/pacman",
-	}
-}
-
-func injectConfigMeta(data []byte, meta config.MetaConfig) ([]byte, error) {
-	var doc yaml.Node
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, err
-	}
-	if len(doc.Content) == 0 {
-		doc.Content = []*yaml.Node{{Kind: yaml.MappingNode}}
-	}
-
-	root := doc.Content[0]
-	if root.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("config.yaml top level must be a mapping")
-	}
-
-	content := make([]*yaml.Node, 0, len(root.Content))
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		if root.Content[i].Value == "meta" {
-			continue
-		}
-		content = append(content, root.Content[i], root.Content[i+1])
-	}
-	root.Content = append([]*yaml.Node{
-		scalarNode("meta"),
-		metaConfigNode(meta),
-	}, content...)
-
-	return yaml.Marshal(&doc)
-}
-
-func metaConfigNode(meta config.MetaConfig) *yaml.Node {
-	return &yaml.Node{
-		Kind: yaml.MappingNode,
-		Content: []*yaml.Node{
-			scalarNode("work_dir"), scalarNode(meta.WorkDir),
-			scalarNode("snapshot_dir"), scalarNode(meta.SnapshotDir),
-			scalarNode("pkg_cache"), scalarNode(meta.PkgCache),
-			scalarNode("db_path"), scalarNode(meta.DBPath),
-		},
-	}
-}
-
-func scalarNode(value string) *yaml.Node {
-	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
-}
-
-// copyProductToTarget 将 flatDir 的内容复制到目标 @ 子卷
-func copyProductToTarget(rootUUID string) {
-	fmt.Println(i18n.T("install.copy.product"))
-
-	flatDir := filepath.Join(TargetStarsleepMount, "work/flat")
-
-	// 挂载 @ 子卷进行复制
-	tmpMount := filepath.Join(TargetMount, ".tmp-root-@")
-	os.MkdirAll(tmpMount, 0o755)
-	if err := util.Run("mount", "-o", "subvol=@,compress=zstd", "UUID="+rootUUID, tmpMount); err != nil {
-		util.Fatal(fmt.Sprintf("挂载 @ 子卷失败: %v", err))
-	}
-
-	if err := util.Run("rsync", "-aAX", "--delete", flatDir+"/", tmpMount+"/"); err != nil {
-		util.Fatal(fmt.Sprintf("复制构建产物失败: %v", err))
-	}
-
-	util.Run("umount", tmpMount)
-	os.Remove(tmpMount)
-	fmt.Println(i18n.T("install.copy.done"))
 }
 
 // runBuild 初始化工作目录并运行构建（在目标 starsleep 子卷上）
 func runBuild() {
 	fmt.Println(i18n.T("install.init.workdir"))
 
-	// 创建必要的目录结构
-	dirs := []string{
-		filepath.Join(TargetStarsleepMount, "layers"),
-		filepath.Join(TargetStarsleepMount, "snapshots"),
-		filepath.Join(TargetStarsleepMount, "work/merged"),
-		filepath.Join(TargetStarsleepMount, "work/ovl_work"),
-		filepath.Join(TargetStarsleepMount, "logs"),
-	}
-	for _, d := range dirs {
-		os.MkdirAll(d, 0o755)
-	}
-
-	// 创建 Btrfs 子卷（pacman-cache, paru-cache）
-	for _, subvol := range []string{
-		filepath.Join(TargetStarsleepMount, "shared/pacman-cache"),
-		filepath.Join(TargetStarsleepMount, "shared/paru-cache"),
-	} {
-		if _, err := os.Stat(subvol); os.IsNotExist(err) {
-			if err := util.Run("btrfs", "subvolume", "create", subvol); err != nil {
-				util.Fatal(fmt.Sprintf("创建子卷 %s 失败: %v", subvol, err))
-			}
-		}
-	}
-
 	// 检查必要的外部工具
 	fmt.Println(i18n.T("install.build.start"))
-	build.Run([]string{"-c", TargetConfigDir})
+	build.RunWithOptions(nil, build.Options{
+		ConfigDir:   TargetConfigDir,
+		WorkDir:     TargetStarsleepMount,
+		SnapshotDir: filepath.Join(TargetStarsleepMount, "snapshots"),
+		PkgCache:    filepath.Join(TargetStarsleepMount, "shared/pacman-cache"),
+		ParuCache:   filepath.Join(TargetStarsleepMount, "shared/paru-cache"),
+	})
 	fmt.Println(i18n.T("install.build.done"))
+}
+
+func latestSnapshot(workDir string) (string, string) {
+	latestLink := filepath.Join(workDir, "snapshots", "latest")
+	target, err := os.Readlink(latestLink)
+	if err != nil {
+		util.Fatal(fmt.Sprintf("读取最新快照失败: %v", err))
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(latestLink), target)
+	}
+	return target, filepath.Base(target)
 }
 
 // printSummary 打印安装摘要
@@ -476,21 +362,4 @@ func confirmPrompt(prompt string) bool {
 	text, _ := reader.ReadString('\n')
 	text = strings.TrimSpace(strings.ToLower(text))
 	return text == "y" || text == "yes"
-}
-
-// initSharedDirs 在目标系统 /starsleep/shared/ 下创建共享目录结构
-func initSharedDirs() {
-	fmt.Println(i18n.T("install.init.shared"))
-
-	shared := filepath.Join(TargetStarsleepMount, "shared")
-	dirs := []string{
-		filepath.Join(shared, "home"),
-		filepath.Join(shared, "root"),
-	}
-	for _, d := range dirs {
-		os.MkdirAll(d, 0o755)
-	}
-	os.Chmod(filepath.Join(shared, "root"), 0o700)
-
-	fmt.Println(i18n.T("install.shared.done"))
 }
