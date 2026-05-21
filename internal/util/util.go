@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"starsleep/internal/i18n"
@@ -54,7 +55,8 @@ func LogMsg(format string, args ...any) {
 
 // FatalPanicMode 为 true 时 Fatal 抛出 panic 而非 os.Exit。
 // 用于 build 逐层构建时捕获失败并回滚工作快照。
-var FatalPanicMode bool
+// 使用 atomic.Bool 避免并发读写 data race。
+var FatalPanicMode atomic.Bool
 
 // FatalError 是 Fatal 在 panic 模式下抛出的错误类型
 type FatalError struct{ Msg string }
@@ -69,7 +71,7 @@ func (e FatalError) Error() string { return e.Msg }
 // @param msg 错误消息字符串
 // @throws FatalPanicMode 为 true 时抛出 FatalError
 func Fatal(msg string) {
-	if FatalPanicMode {
+	if FatalPanicMode.Load() {
 		panic(FatalError{Msg: msg})
 	}
 	fmt.Fprintf(os.Stderr, i18n.T("fatal.prefix"), msg)

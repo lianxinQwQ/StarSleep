@@ -124,6 +124,8 @@ install options:
 	"inherit.file":          "Inherited file: %s",
 	"layer.sync.error":      "Layer %s sync failed: %s",
 	"layer.sync.panic":      "Layer %s sync panic: %v",
+	"mount.vfs.failed":      "Failed to bind-mount virtual filesystem %s → %s: %v",
+	"mount.devpts.failed":   "Failed to mount devpts at %s: %v",
 
 	// ── deploy.go ──
 	"flatten.remove.usage":   "Usage: starsleep flatten --remove <snapshot-name>",

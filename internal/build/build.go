@@ -233,11 +233,15 @@ func bindVFS(root string) {
 	}
 	for _, m := range mounts {
 		os.MkdirAll(m.dst, 0o755)
-		syscall.Mount(m.src, m.dst, "", syscall.MS_BIND, "")
+		if err := syscall.Mount(m.src, m.dst, "", syscall.MS_BIND, ""); err != nil {
+			util.Fatal(i18n.T("mount.vfs.failed", m.src, m.dst, err))
+		}
 	}
 	devpts := filepath.Join(root, "dev/pts")
 	os.MkdirAll(devpts, 0o755)
-	syscall.Mount("devpts", devpts, "devpts", 0, "")
+	if err := syscall.Mount("devpts", devpts, "devpts", 0, ""); err != nil {
+		util.Fatal(i18n.T("mount.devpts.failed", devpts, err))
+	}
 
 	src := "/etc/resolv.conf"
 	dst := filepath.Join(root, "etc/resolv.conf")
@@ -289,10 +293,10 @@ func isBtrfsSubvolume(path string) bool {
 
 // runSyncSafe 安全地调用 helper.Dispatch，捕获 fatal panic 并返回是否成功
 func runSyncSafe(root, configDir, dbPath string, cfg *config.LayerConfig, expectedPkgs, expectedSvcs []string) (ok bool) {
-	oldMode := util.FatalPanicMode
-	util.FatalPanicMode = true
+	oldMode := util.FatalPanicMode.Load()
+	util.FatalPanicMode.Store(true)
 	defer func() {
-		util.FatalPanicMode = oldMode
+		util.FatalPanicMode.Store(oldMode)
 		if r := recover(); r != nil {
 			if fe, isFatal := r.(util.FatalError); isFatal {
 				util.LogMsg(i18n.T("layer.sync.error"), cfg.Name, fe.Error())

@@ -25,12 +25,13 @@ type FlattenStats struct {
 	Symlinks  int
 	Dirs      int
 	Hardlinks int
+
+	inodeMap map[inodeKey]string
 }
 
 // FlattenOverlay 将 upper 层变更通过 reflink 合并到 flat 目录
 func FlattenOverlay(flatDir, upperDir string) (*FlattenStats, error) {
-	st := &FlattenStats{}
-	resetInodeMap()
+	st := &FlattenStats{inodeMap: make(map[inodeKey]string)}
 	if err := walkUpper(upperDir, flatDir, "", st); err != nil {
 		return st, err
 	}
@@ -110,12 +111,12 @@ func walkUpper(upperBase, flatBase, rel string, st *FlattenStats) error {
 		// 普通文件处理
 		if fi.Mode().IsRegular() {
 			if sysstat.Nlink > 1 {
-				if _, linked := tryHardlink(sysstat, flatPath); linked {
+				if _, linked := tryHardlink(st, sysstat, flatPath); linked {
 					st.Hardlinks++
 					continue
 				}
 			}
-			if err := reflinkCopy(upperPath, flatPath, sysstat.Mode&0o7777, sysstat); err != nil {
+			if err := reflinkCopy(st, upperPath, flatPath, sysstat.Mode&0o7777, sysstat); err != nil {
 				return err
 			}
 			st.Files++

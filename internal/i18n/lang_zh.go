@@ -124,6 +124,8 @@ install 选项:
 	"inherit.file":          "继承文件: %s",
 	"layer.sync.error":      "层 %s 同步失败: %s",
 	"layer.sync.panic":      "层 %s 同步异常: %v",
+	"mount.vfs.failed":      "挂载虚拟文件系统 %s → %s 失败: %v",
+	"mount.devpts.failed":   "挂载 devpts 到 %s 失败: %v",
 
 	// ── deploy.go ──
 	"flatten.remove.usage":   "用法: starsleep flatten --remove <快照名称>",

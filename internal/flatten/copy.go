@@ -12,7 +12,7 @@ import (
 
 const ficlone = 0x40049409
 
-func reflinkCopy(src, dst string, perm uint32, srcStat *syscall.Stat_t) error {
+func reflinkCopy(st *FlattenStats, src, dst string, perm uint32, srcStat *syscall.Stat_t) error {
 	os.RemoveAll(dst)
 	srcFd, err := syscall.Open(src, syscall.O_RDONLY, 0)
 	if err != nil {
@@ -34,7 +34,7 @@ func reflinkCopy(src, dst string, perm uint32, srcStat *syscall.Stat_t) error {
 	syscall.Fchmod(dstFd, perm)
 	copyXattrsFdClean(srcFd, dstFd)
 	copyTimes(srcStat, dst)
-	registerInode(srcStat, dst)
+	registerInode(st, srcStat, dst)
 	return nil
 }
 
@@ -120,24 +120,18 @@ type inodeKey struct {
 	ino uint64
 }
 
-var inodeMap map[inodeKey]string
-
-func resetInodeMap() {
-	inodeMap = make(map[inodeKey]string)
-}
-
-func registerInode(st *syscall.Stat_t, flatPath string) {
-	if st.Nlink > 1 {
-		key := inodeKey{dev: st.Dev, ino: st.Ino}
-		if _, exists := inodeMap[key]; !exists {
-			inodeMap[key] = flatPath
+func registerInode(st *FlattenStats, s *syscall.Stat_t, flatPath string) {
+	if s.Nlink > 1 {
+		key := inodeKey{dev: s.Dev, ino: s.Ino}
+		if _, exists := st.inodeMap[key]; !exists {
+			st.inodeMap[key] = flatPath
 		}
 	}
 }
 
-func tryHardlink(st *syscall.Stat_t, flatPath string) (string, bool) {
-	key := inodeKey{dev: st.Dev, ino: st.Ino}
-	existing, ok := inodeMap[key]
+func tryHardlink(st *FlattenStats, s *syscall.Stat_t, flatPath string) (string, bool) {
+	key := inodeKey{dev: s.Dev, ino: s.Ino}
+	existing, ok := st.inodeMap[key]
 	if !ok {
 		return "", false
 	}
