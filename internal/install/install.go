@@ -13,7 +13,6 @@ import (
 	"starsleep/internal/build"
 	"starsleep/internal/config"
 	"starsleep/internal/i18n"
-	"starsleep/internal/init_env"
 	"starsleep/internal/util"
 )
 
@@ -24,6 +23,10 @@ const (
 	TargetMount = "/mnt/starsleep-target"
 	// TargetBootMount 是目标 EFI 分区的临时挂载点
 	TargetBootMount = "/mnt/starsleep-target/boot"
+	// TargetStarsleepMount 是目标 starsleep 子卷的临时挂载点
+	TargetStarsleepMount = "/mnt/starsleep-target/starsleep"
+	// TargetConfigDir 是目标 starsleep 子卷下的配置目录
+	TargetConfigDir = "/mnt/starsleep-target/starsleep/config"
 )
 
 // Run 执行系统安装命令
@@ -77,26 +80,12 @@ func Run(args []string) {
 		}
 	}
 
-	if profile == "" {
-		profile = "dev"
-	}
 	if repoURL == "" {
 		repoURL = DefaultRepoURL
 	}
 
-	// 整盘模式：交互式分区（如果提供了 --disk）
-	if disk != "" {
-		bootP, rootP := interactivePartition(disk)
-		bootPart = bootP
-		rootPart = rootP
-	}
-
-	if bootPart == "" {
-		util.Fatal(i18n.T("install.missing.boot"))
-	}
-	if rootPart == "" {
-		util.Fatal(i18n.T("install.missing.root"))
-	}
+	// ── 交互式参数补全 ──
+	bootPart, rootPart, disk, profile, entryName = askMissingOptions(bootPart, rootPart, disk, profile, entryName)
 
 	fmt.Println(i18n.T("install.separator"))
 	fmt.Println(i18n.T("install.title"))
@@ -123,8 +112,12 @@ func Run(args []string) {
 	// ── 阶段 C: 获取 UUID 并创建 Btrfs 子卷布局 ──
 	rootUUID := createSubvolLayout(rootPart)
 
+	// ── 挂载 starsleep 子卷 ──
+	mountStarsleepSubvol(rootUUID)
+
 	// ── 阶段 D: 拉取预设配置 ──
 	fetchProfile(profile, repoURL, branch)
+	writeConfigMeta()
 
 	// ── 阶段 E: 初始化工作目录 + 构建系统 ──
 	runBuild()
@@ -136,7 +129,7 @@ func Run(args []string) {
 	generateFstab(rootUUID, bootPart)
 
 	// ── 阶段 H: 初始化 systemd-boot ──
-	mc, err := config.LoadMainConfig(config.DefaultConfigDir)
+	mc, err := config.LoadMainConfig(TargetConfigDir)
 	snapshotName := "snapshot-initial"
 	if err == nil {
 		_ = mc
@@ -147,6 +140,7 @@ func Run(args []string) {
 	initSharedDirs()
 
 	// ── 卸载并清理 ──
+	util.Run("umount", TargetStarsleepMount)
 	util.Run("umount", "-R", TargetMount)
 
 	// ── 打印安装摘要 ──
@@ -168,24 +162,82 @@ func mountTarget(bootPart, rootPart string) {
 	}
 }
 
-// copyProductToTarget 将 flatDir 的内容复制到目标根子卷
+// mountStarsleepSubvol 挂载目标的 starsleep 子卷供构建使用
+func mountStarsleepSubvol(rootUUID string) {
+	fmt.Println(i18n.T("install.mount.starsleep"))
+	os.MkdirAll(TargetStarsleepMount, 0o755)
+	if err := util.Run("mount", "-o", "subvol=starsleep,compress=zstd", "UUID="+rootUUID, TargetStarsleepMount); err != nil {
+		util.Fatal(fmt.Sprintf("挂载 starsleep 子卷失败: %v", err))
+	}
+	// 预创建 starsleep 目录结构
+	dirs := []string{
+		filepath.Join(TargetStarsleepMount, "shared"),
+		filepath.Join(TargetStarsleepMount, "shared/home"),
+		filepath.Join(TargetStarsleepMount, "shared/pacman-cache"),
+		filepath.Join(TargetStarsleepMount, "shared/paru-cache"),
+		filepath.Join(TargetStarsleepMount, "shared/root"),
+		filepath.Join(TargetStarsleepMount, "var"),
+		filepath.Join(TargetStarsleepMount, "var/log"),
+		filepath.Join(TargetStarsleepMount, "var/cache"),
+	}
+	for _, d := range dirs {
+		os.MkdirAll(d, 0o755)
+	}
+}
+
+// writeConfigMeta 将目标路径写入 config.yaml 的 meta 段，让 build 使用目标路径
+func writeConfigMeta() {
+	configPath := filepath.Join(TargetConfigDir, "config.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		util.Fatal("无法读取配置: " + err.Error())
+	}
+
+	// 构建新的 meta 段
+	metaLines := fmt.Sprintf(`meta:
+  work_dir: %s
+  snapshot_dir: %s/snapshots
+  pkg_cache: %s/shared/pacman-cache
+  db_path: var/lib/pacman
+`, TargetStarsleepMount, TargetStarsleepMount, TargetStarsleepMount)
+
+	content := string(data)
+
+	// 找到已有的 meta: 行位置，替换整段；没找到则追加到文件头
+	idx := strings.Index(content, "\nmeta:")
+	if idx >= 0 {
+		// 找到下一非缩进行（即下一个顶层 key）或文件尾
+		rest := content[idx+1:]
+		end := strings.IndexFunc(rest, func(r rune) bool {
+			return r == '\n' && !strings.HasPrefix(rest[strings.IndexRune(rest, r)+1:], " ")
+		})
+		if end > 0 {
+			content = content[:idx] + metaLines + rest[end:]
+		} else {
+			content = content[:idx] + "\n" + metaLines
+		}
+	} else {
+		content = metaLines + "\n" + content
+	}
+
+	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+		util.Fatal("写入配置 meta 段失败: " + err.Error())
+	}
+}
+
+// copyProductToTarget 将 flatDir 的内容复制到目标 @ 子卷
 func copyProductToTarget(rootUUID string) {
 	fmt.Println(i18n.T("install.copy.product"))
 
-	workDir := config.DefaultWorkDir
-	flatDir := filepath.Join(workDir, "work/flat")
+	flatDir := filepath.Join(TargetStarsleepMount, "work/flat")
 
-	// 先卸载当前 @ 子卷（如果有的话，重新挂载）
-	subvolMount := filepath.Join(TargetMount, "@")
-	// 确保子卷存在
-	util.Run("btrfs", "subvolume", "create", subvolMount)
-
-	// 挂载 @ 子卷到临时位置进行复制
-	tmpMount := filepath.Join(TargetMount, ".tmp-root")
+	// 挂载 @ 子卷进行复制
+	tmpMount := filepath.Join(TargetMount, ".tmp-root-@")
 	os.MkdirAll(tmpMount, 0o755)
-	util.Run("mount", "-o", fmt.Sprintf("subvol=@,compress=zstd"), "UUID="+rootUUID, tmpMount)
+	if err := util.Run("mount", "-o", "subvol=@,compress=zstd", "UUID="+rootUUID, tmpMount); err != nil {
+		util.Fatal(fmt.Sprintf("挂载 @ 子卷失败: %v", err))
+	}
 
-	// rsync 复制
 	if err := util.Run("rsync", "-aAX", "--delete", flatDir+"/", tmpMount+"/"); err != nil {
 		util.Fatal(fmt.Sprintf("复制构建产物失败: %v", err))
 	}
@@ -195,13 +247,37 @@ func copyProductToTarget(rootUUID string) {
 	fmt.Println(i18n.T("install.copy.done"))
 }
 
-// runBuild 初始化工作目录并运行构建
+// runBuild 初始化工作目录并运行构建（在目标 starsleep 子卷上）
 func runBuild() {
 	fmt.Println(i18n.T("install.init.workdir"))
-	init_env.Run([]string{})
 
+	// 创建必要的目录结构
+	dirs := []string{
+		filepath.Join(TargetStarsleepMount, "layers"),
+		filepath.Join(TargetStarsleepMount, "snapshots"),
+		filepath.Join(TargetStarsleepMount, "work/merged"),
+		filepath.Join(TargetStarsleepMount, "work/ovl_work"),
+		filepath.Join(TargetStarsleepMount, "logs"),
+	}
+	for _, d := range dirs {
+		os.MkdirAll(d, 0o755)
+	}
+
+	// 创建 Btrfs 子卷（pacman-cache, paru-cache）
+	for _, subvol := range []string{
+		filepath.Join(TargetStarsleepMount, "shared/pacman-cache"),
+		filepath.Join(TargetStarsleepMount, "shared/paru-cache"),
+	} {
+		if _, err := os.Stat(subvol); os.IsNotExist(err) {
+			if err := util.Run("btrfs", "subvolume", "create", subvol); err != nil {
+				util.Fatal(fmt.Sprintf("创建子卷 %s 失败: %v", subvol, err))
+			}
+		}
+	}
+
+	// 检查必要的外部工具
 	fmt.Println(i18n.T("install.build.start"))
-	build.Run([]string{})
+	build.Run([]string{"-c", TargetConfigDir})
 	fmt.Println(i18n.T("install.build.done"))
 }
 
@@ -221,6 +297,126 @@ func printSummary(profile, bootPart, rootPart, rootUUID, snapshotName string) {
 	fmt.Println()
 	fmt.Println(i18n.T("install.reboot.hint"))
 	fmt.Println(i18n.T("install.reboot.cmd"))
+}
+
+// askMissingOptions 对未通过命令行指定的选项进行交互式询问
+func askMissingOptions(bootPart, rootPart, disk, profile, entryName string) (string, string, string, string, string) {
+	// 如果都给了，直接返回
+	if bootPart != "" && rootPart != "" && profile != "" && entryName != "" {
+		return bootPart, rootPart, disk, profile, entryName
+	}
+
+	fmt.Println(i18n.T("install.interactive.header"))
+	fmt.Println(i18n.T("install.separator"))
+
+	// ── 分区选择 ──
+	if bootPart == "" || rootPart == "" {
+		bootPart, rootPart = askPartition(disk)
+	}
+
+	// ── profile 选择 ──
+	if profile == "" {
+		profile = askProfile()
+	}
+
+	// ── 名称 ──
+	if entryName == "" {
+		entryName = askEntryName()
+	}
+
+	fmt.Println(i18n.T("install.separator"))
+	return bootPart, rootPart, disk, profile, entryName
+}
+
+// askPartition 交互式询问分区选择方式，返回 boot 和 root 分区路径
+func askPartition(disk string) (string, string) {
+	if disk != "" {
+		return interactivePartition(disk)
+	}
+
+	// 先问选择方式
+	fmt.Println(i18n.T("install.partition.method"))
+	fmt.Println("  1) " + i18n.T("install.partition.method.disk"))
+	fmt.Println("  2) " + i18n.T("install.partition.method.manual"))
+	fmt.Print(i18n.T("install.partition.method.select"))
+
+	var method int
+	for {
+		fmt.Scanf("%d", &method)
+		if method == 1 || method == 2 {
+			break
+		}
+		fmt.Print(i18n.T("install.partition.method.retry"))
+		// 清空 stdin 残余
+		reader := bufio.NewReader(os.Stdin)
+		reader.ReadString('\n')
+	}
+
+	switch method {
+	case 1:
+		disks, err := detectDisks()
+		if err != nil {
+			util.Fatal(err.Error())
+		}
+		if len(disks) == 0 {
+			util.Fatal(i18n.T("install.no.disk"))
+		}
+		fmt.Println(i18n.T("install.disk.select"))
+		for i, d := range disks {
+			fmt.Printf("  %d) %s (%s)\n", i+1, "/dev/"+d.Name, d.Size)
+		}
+		fmt.Print(i18n.T("install.disk.select.prompt"))
+		var idx int
+		fmt.Scanf("%d", &idx)
+		if idx < 1 || idx > len(disks) {
+			util.Fatal("无效的磁盘选择")
+		}
+		return interactivePartition("/dev/" + disks[idx-1].Name)
+	case 2:
+		fmt.Print(i18n.T("install.partition.enter.boot"))
+		reader := bufio.NewReader(os.Stdin)
+		boot, _ := reader.ReadString('\n')
+		boot = strings.TrimSpace(boot)
+
+		fmt.Print(i18n.T("install.partition.enter.root"))
+		root, _ := reader.ReadString('\n')
+		root = strings.TrimSpace(root)
+
+		if boot == "" || root == "" {
+			util.Fatal(i18n.T("install.missing.partition"))
+		}
+		return boot, root
+	}
+	return "", ""
+}
+
+// askProfile 交互式询问预设配置
+func askProfile() string {
+	fmt.Println(i18n.T("install.profile.select"))
+	fmt.Println("  1) minimal  - " + i18n.T("install.profile.minimal.desc"))
+	fmt.Println("  2) gnome    - " + i18n.T("install.profile.gnome.desc"))
+	fmt.Println("  3) dev      - " + i18n.T("install.profile.dev.desc"))
+	fmt.Print(i18n.T("install.profile.select.prompt"))
+
+	var choice int
+	for {
+		fmt.Scanf("%d", &choice)
+		if choice >= 1 && choice <= 3 {
+			break
+		}
+		fmt.Print(i18n.T("install.profile.select.retry"))
+		reader := bufio.NewReader(os.Stdin)
+		reader.ReadString('\n')
+	}
+
+	switch choice {
+	case 1:
+		return "minimal"
+	case 2:
+		return "gnome"
+	default:
+		return "dev"
+	}
 }
 
 // askEntryName 询问用户在 UEFI 固件启动菜单中的显示名称
@@ -248,26 +444,19 @@ func confirmPrompt(prompt string) bool {
 	return text == "y" || text == "yes"
 }
 
-// initSharedDirs 在目标系统创建共享目录结构
+// initSharedDirs 在目标系统 /starsleep/shared/ 下创建共享目录结构
 func initSharedDirs() {
 	fmt.Println(i18n.T("install.init.shared"))
 
+	shared := filepath.Join(TargetStarsleepMount, "shared")
 	dirs := []string{
-		filepath.Join(TargetMount, "home"),
-		filepath.Join(TargetMount, "root"),
-		filepath.Join(TargetMount, "var/log"),
-		filepath.Join(TargetMount, "var/cache"),
-		filepath.Join(TargetMount, "var/tmp"),
+		filepath.Join(shared, "home"),
+		filepath.Join(shared, "root"),
 	}
-
 	for _, d := range dirs {
 		os.MkdirAll(d, 0o755)
 	}
-
-	// 设置 /root 权限
-	os.Chmod(filepath.Join(TargetMount, "root"), 0o700)
-	// 设置 /var/tmp sticky bit
-	os.Chmod(filepath.Join(TargetMount, "var/tmp"), 0o1777)
+	os.Chmod(filepath.Join(shared, "root"), 0o700)
 
 	fmt.Println(i18n.T("install.shared.done"))
 }

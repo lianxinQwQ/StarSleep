@@ -28,7 +28,7 @@ func SyncChrootPacman(root, dbPath string, envVars []config.EnvVar, pkgs []strin
 
 	// 在 chroot 内部，dbPath 就是以 / 为根的绝对路径
 	chrootDBPath := "/" + dbPath
-	args := []string{root, "pacman", "--dbpath", chrootDBPath, "-S", "--needed", "--noconfirm"}
+	args := []string{root, "pacman", "--dbpath", chrootDBPath, "-Sy", "--needed", "--noconfirm"}
 	args = append(args, pkgs...)
 
 	if err := util.RunWithEnv(resolvedEnv, "arch-chroot", args...); err != nil {

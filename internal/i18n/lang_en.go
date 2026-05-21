@@ -53,12 +53,12 @@ flatten options:
   <snapshot-path>     Snapshot to deploy (default: latest)
 
 install options:
-  --boot <part>     EFI system partition (e.g. /dev/sda1)
-  --root <part>     Root partition (e.g. /dev/sda2)
-  --disk <dev>      Whole disk device (e.g. /dev/sda, auto-partition)
-  --profile <name>  Preset configuration (minimal/gnome/dev, default: dev)
+  --boot <part>     EFI system partition, asked interactively if omitted
+  --root <part>     Root partition, asked interactively if omitted
+  --disk <dev>      Whole disk device, can interactively select disk & partitions
+  --profile <name>  Preset configuration (minimal/gnome/dev), asked interactively if omitted
   --name <name>     Display name in UEFI firmware boot menu (default: StarSleep)
-  --branch <branch>  Git branch where preset configs reside (default: main)
+  --branch <branch> Git branch where preset configs reside (default: main)
   --force           Skip confirmation prompts, force format
   --repo <URL>      Git repository URL for preset configs (optional, e.g. https://github.com/user/repo)`,
 
@@ -280,7 +280,8 @@ install options:
 	// ── pacstrap.go ──
 	"sync.pacstrap":    "[Sync] Initializing base root filesystem with pacstrap...",
 	"sync.incremental": "[Sync] Existing system detected, performing incremental sync...",
-	"sync.fresh":       "[Sync] Fresh bootstrap...",
+	"sync.fresh":             "[Sync] Fresh bootstrap...",
+	"sync.refresh.stale.db": "[Sync] Stale sync databases found in target, refreshing to avoid outdated package versions...",
 	"pacstrap.failed":  "pacstrap failed: %v",
 
 	// ── paru.go ──
@@ -376,9 +377,10 @@ install options:
 	"inherit.store.missing":      "Warning: path not found in inherit store, skipping: %s",
 
 	// ── install.go ──
-	"install.usage":              "Usage: starsleep install --boot <part> --root <part> [--profile <name>] [--force]\n       starsleep install --disk <dev> [--profile <name>] [--force]",
-	"install.missing.boot":       "Error: missing --boot argument, please specify EFI system partition",
-	"install.missing.root":       "Error: missing --root argument, please specify root partition",
+	"install.usage":              "Usage: starsleep install [--boot <part>] [--root <part>] [--profile <name>] [--name <name>] [--disk <dev>] [--branch <branch>] [--repo <URL>] [--force]\n\n  All options are optional; omitted ones will be asked interactively.",
+	"install.missing.boot":            "Error: missing boot partition",
+	"install.missing.root":            "Error: missing root partition",
+	"install.missing.partition":       "Error: both boot and root partitions must not be empty",
 	"install.no.disk":            "Error: no usable disk found (at least 8GB)",
 	"install.separator":          "[Install] ─────────────────────────────────────────────",
 	"install.title":              "[Install] StarSleep System Installation",
@@ -389,15 +391,21 @@ install options:
 	"install.confirm.format":     "[Install] Confirm: partition %s has existing filesystem, format and continue? (y/N): ",
 	"install.format.boot":        "[Install] Formatting EFI partition: %s (FAT32)...",
 	"install.format.root":        "[Install] Formatting root partition: %s (Btrfs)...",
-	"install.format.done":        "[Install] Partition formatting complete",
-	"install.fetch.config":       "[Install] Fetching preset config from GitHub: %s",
+	"install.format.done":             "[Install] Partition formatting complete",
+	"install.mounted.detected":        "[Install] Partition %s is already mounted at %s\n",
+	"install.mounted.force":           "[Install] --force: auto-unmounting",
+	"install.mounted.umount.confirm":  "[Install] Unmount %s to continue? (y/N): ",
+	"install.unmounting":              "[Install] Unmounting %s...",
+	"install.unmounted":               "[Install] Unmounted %s\n",
+	"install.fetch.config":            "[Install] Fetching preset config from GitHub: %s",
 	"install.fetch.downloading":  "[Install] Downloading: %s",
 	"install.fetch.failed":       "[Install] Failed to fetch preset config %s: %v\n[Install] Please check network connection or manually download config to %s",
 	"install.fetch.done":         "[Install] Config download complete",
 	"install.mount.target":       "[Install] Mounting target partition to %s",
-	"install.mount.boot":         "[Install] Mounting EFI partition %s to %s",
+	"install.mount.boot":          "[Install] Mounting EFI partition %s to %s",
+	"install.mount.starsleep":     "[Install] Mounting starsleep subvolume to %s",
 	"install.create.subvol":      "[Install] Creating Btrfs subvolume: %s",
-	"install.subvol.layout":      "[Install] Subvolume layout created: @, @home, @var, @starsleep",
+	"install.subvol.layout":      "[Install] Subvolume layout created: @, @home, @var, starsleep",
 	"install.init.workdir":       "[Install] Initializing work directory...",
 	"install.build.start":        "[Install] Starting system build...",
 	"install.build.done":         "[Install] System build complete",
@@ -423,5 +431,21 @@ install options:
 	"install.summary.bottom":     "[Install] ═══════════════════════════════════════════════",
 	"install.entry.name.prompt":  "[Install] Please enter the system name to display in UEFI firmware boot menu",
 	"install.entry.name.input":   "[Install] (default: StarSleep): ",
-	"install.entry.name.confirm": "[Install] UEFI boot name: %s",
+	"install.entry.name.confirm":          "[Install] UEFI boot name: %s",
+	"install.interactive.header":          "[Install] Starting interactive parameter configuration",
+	"install.partition.method":            "[Install] Choose partition selection method:",
+	"install.partition.method.disk":       "Select by disk (list disks and partitions)",
+	"install.partition.method.manual":     "Enter partition paths manually",
+	"install.partition.method.select":     "[Install] Please enter number (1-2): ",
+	"install.partition.method.retry":      "[Install] Invalid choice, please re-enter (1-2): ",
+	"install.disk.select":                 "[Install] Available disks:",
+	"install.disk.select.prompt":          "[Install] Please select disk number: ",
+	"install.partition.enter.boot":        "[Install] Enter EFI system partition path (e.g. /dev/sda1): ",
+	"install.partition.enter.root":        "[Install] Enter root partition path (e.g. /dev/sda2): ",
+	"install.profile.select":              "[Install] Choose preset profile:",
+	"install.profile.minimal.desc":        "Minimal CLI system (server/headless)",
+	"install.profile.gnome.desc":          "GNOME desktop environment (daily use)",
+	"install.profile.dev.desc":            "Full development environment (GNOME + dev toolchain + AUR)",
+	"install.profile.select.prompt":       "[Install] Please enter number (1-3): ",
+	"install.profile.select.retry":        "[Install] Invalid choice, please re-enter (1-3): ",
 }

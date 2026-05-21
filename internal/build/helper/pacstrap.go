@@ -23,6 +23,15 @@ func SyncPacstrap(root, dbPath string, pkgs, expectedPkgs []string) {
 	}
 
 	fmt.Println(i18n.T("sync.fresh"))
+	// 若 target 内已有系统（如上次构建失败留下的残留），
+	// 需刷新 sync 数据库，否则 pacstrap 会复用旧数据库解析出过时的包版本
+	if _, err := os.Stat(filepath.Join(root, "usr/lib")); err == nil {
+		fmt.Println(i18n.T("sync.refresh.stale.db"))
+		util.Run("pacman",
+			"--root", root,
+			"--config", "/etc/pacman.conf",
+			"-Sy", "--noconfirm")
+	}
 	args := append([]string{"-K", "-c", root}, pkgs...)
 	if err := util.Run("pacstrap", args...); err != nil {
 		util.Fatal(i18n.T("pacstrap.failed", err))

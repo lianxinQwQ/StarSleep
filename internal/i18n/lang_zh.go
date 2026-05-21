@@ -53,10 +53,10 @@ flatten 选项:
   <快照路径或名称>     要部署的快照 (默认: latest)
 
 install 选项:
-  --boot <分区>     指定 EFI 系统分区 (如 /dev/sda1)
-  --root <分区>     指定根分区 (如 /dev/sda2)
-  --disk <设备>     指定整盘设备 (如 /dev/sda, 将自动分区)
-  --profile <名称>  选择预设配置 (minimal/gnome/dev, 默认: dev)
+  --boot <分区>     指定 EFI 系统分区，未指定则交互询问
+  --root <分区>     指定根分区，未指定则交互询问
+  --disk <设备>     指定整盘设备，未指定可交互选择磁盘及分区
+  --profile <名称>  选择预设配置 (minimal/gnome/dev)，未指定则交互询问
   --name <名称>      在 UEFI 固件启动菜单中显示的名称 (默认: StarSleep)
   --branch <分支>    预设配置所在的 Git 分支 (默认: main)
   --force           跳过确认提示，强制格式化分区
@@ -280,7 +280,8 @@ install 选项:
 	// ── pacstrap.go ──
 	"sync.pacstrap":    "[Sync] 使用 pacstrap 初始化基础根文件系统...",
 	"sync.incremental": "[Sync] 检测到已有系统，执行增量同步...",
-	"sync.fresh":       "[Sync] 全新引导...",
+	"sync.fresh":             "[Sync] 全新引导...",
+	"sync.refresh.stale.db": "[Sync] 检测到 target 内残留 sync 数据库，正在刷新以避免版本过时...",
 	"pacstrap.failed":  "pacstrap 失败: %v",
 
 	// ── paru.go ──
@@ -376,9 +377,10 @@ install 选项:
 	"inherit.store.missing":      "警告: inherit 存储中未找到路径，跳过: %s",
 
 	// ── install.go ──
-	"install.usage":              "用法: starsleep install --boot <分区> --root <分区> [--profile <名称>] [--force]\n       starsleep install --disk <设备> [--profile <名称>] [--force]",
-	"install.missing.boot":       "错误: 缺少 --boot 参数，请指定 EFI 系统分区",
-	"install.missing.root":       "错误: 缺少 --root 参数，请指定根分区",
+	"install.usage":              "用法: starsleep install [--boot <分区>] [--root <分区>] [--profile <名称>] [--name <名称>] [--disk <设备>] [--branch <分支>] [--repo <URL>] [--force]\n\n  所有选项均可选，未指定时将交互式询问。",
+	"install.missing.boot":            "错误: 缺少 boot 分区",
+	"install.missing.root":            "错误: 缺少 root 分区",
+	"install.missing.partition":       "错误: boot 和 root 分区均不能为空",
 	"install.no.disk":            "错误: 未找到可用磁盘 (至少 8GB)",
 	"install.separator":          "[Install] ─────────────────────────────────────────────",
 	"install.title":              "[Install] StarSleep 系统安装",
@@ -389,15 +391,21 @@ install 选项:
 	"install.confirm.format":     "[Install] 确认: 分区 %s 已存在文件系统，是否格式化并继续? (y/N): ",
 	"install.format.boot":        "[Install] 格式化 EFI 分区: %s (FAT32)...",
 	"install.format.root":        "[Install] 格式化根分区: %s (Btrfs)...",
-	"install.format.done":        "[Install] 分区格式化完成",
-	"install.fetch.config":       "[Install] 从 GitHub 拉取预设配置: %s",
+	"install.format.done":             "[Install] 分区格式化完成",
+	"install.mounted.detected":        "[Install] 分区 %s 已挂载到 %s\n",
+	"install.mounted.force":           "[Install] --force: 自动卸载",
+	"install.mounted.umount.confirm":  "[Install] 是否卸载 %s 以继续? (y/N): ",
+	"install.unmounting":              "[Install] 正在卸载 %s...",
+	"install.unmounted":               "[Install] 已卸载 %s\n",
+	"install.fetch.config":            "[Install] 从 GitHub 拉取预设配置: %s",
 	"install.fetch.downloading":  "[Install] 下载: %s",
 	"install.fetch.failed":       "[Install] 无法拉取预设配置 %s: %v\n[Install] 请检查网络连接或手动下载配置到 %s",
 	"install.fetch.done":         "[Install] 配置下载完成",
 	"install.mount.target":       "[Install] 挂载目标分区到 %s",
-	"install.mount.boot":         "[Install] 挂载 EFI 分区 %s 到 %s",
+	"install.mount.boot":          "[Install] 挂载 EFI 分区 %s 到 %s",
+	"install.mount.starsleep":     "[Install] 挂载 starsleep 子卷到 %s",
 	"install.create.subvol":      "[Install] 创建 Btrfs 子卷: %s",
-	"install.subvol.layout":      "[Install] 已创建子卷布局: @, @home, @var, @starsleep",
+	"install.subvol.layout":      "[Install] 已创建子卷布局: @, @home, @var, starsleep",
 	"install.init.workdir":       "[Install] 初始化工作目录...",
 	"install.build.start":        "[Install] 开始构建系统...",
 	"install.build.done":         "[Install] 系统构建完成",
@@ -423,5 +431,21 @@ install 选项:
 	"install.summary.bottom":     "[Install] ═══════════════════════════════════════════════",
 	"install.entry.name.prompt":  "[Install] 请输入在 UEFI 固件启动菜单中显示的系统名称",
 	"install.entry.name.input":   "[Install] (默认为 StarSleep): ",
-	"install.entry.name.confirm": "[Install] UEFI 启动名称: %s",
+	"install.entry.name.confirm":         "[Install] UEFI 启动名称: %s",
+	"install.interactive.header":         "[Install] 开始交互式参数配置",
+	"install.partition.method":           "[Install] 请选择分区方式:",
+	"install.partition.method.disk":      "按整盘指定 (列出磁盘及其分区)",
+	"install.partition.method.manual":    "手动输入分区路径",
+	"install.partition.method.select":    "[Install] 请输入编号 (1-2): ",
+	"install.partition.method.retry":     "[Install] 无效选择，请重新输入 (1-2): ",
+	"install.disk.select":                "[Install] 可用磁盘:",
+	"install.disk.select.prompt":         "[Install] 请选择磁盘编号: ",
+	"install.partition.enter.boot":       "[Install] 请输入 EFI 系统分区路径 (如 /dev/sda1): ",
+	"install.partition.enter.root":       "[Install] 请输入根分区路径 (如 /dev/sda2): ",
+	"install.profile.select":             "[Install] 请选择预设配置:",
+	"install.profile.minimal.desc":       "最小 CLI 系统 (服务器/无桌面)",
+	"install.profile.gnome.desc":         "GNOME 桌面环境 (日常办公)",
+	"install.profile.dev.desc":           "完整开发环境 (GNOME + 开发工具链 + AUR)",
+	"install.profile.select.prompt":      "[Install] 请输入编号 (1-3): ",
+	"install.profile.select.retry":       "[Install] 无效选择，请重新输入 (1-3): ",
 }

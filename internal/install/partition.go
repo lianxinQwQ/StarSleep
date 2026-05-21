@@ -128,6 +128,10 @@ func interactivePartition(disk string) (bootPart, rootPart string) {
 
 // formatPartitions 格式化 boot 和 root 分区
 func formatPartitions(bootPart, rootPart string, force bool) {
+	// 检测分区是否已挂载，已挂载则询问卸载
+	checkAlreadyMounted(bootPart, force)
+	checkAlreadyMounted(rootPart, force)
+
 	// 检测并确认格式化
 	checkForce := func(part string) {
 		fstype, err := util.RunSilent("blkid", "-s", "TYPE", "-o", "value", part)
@@ -159,6 +163,38 @@ func formatPartitions(bootPart, rootPart string, force bool) {
 	fmt.Println(i18n.T("install.format.done"))
 }
 
+// checkAlreadyMounted 检测分区是否已挂载，若已挂载则询问用户是否卸载
+func checkAlreadyMounted(part string, force bool) {
+	mountpoint, err := util.RunSilent("findmnt", "-n", "-o", "TARGET", part)
+	if err != nil || mountpoint == "" {
+		return // 未挂载
+	}
+	mountpoint = strings.TrimSpace(mountpoint)
+	fmt.Printf(i18n.T("install.mounted.detected"), part, mountpoint)
+	if force {
+		fmt.Println(i18n.T("install.mounted.force"))
+		umountPartition(part, mountpoint)
+		return
+	}
+	if confirmPrompt(i18n.T("install.mounted.umount.confirm", part)) {
+		umountPartition(part, mountpoint)
+	} else {
+		util.Fatal(fmt.Sprintf("分区 %s 已挂载到 %s，无法继续", part, mountpoint))
+	}
+}
+
+// umountPartition 卸载指定分区
+func umountPartition(part, mountpoint string) {
+	fmt.Printf(i18n.T("install.unmounting"), part)
+	if err := util.Run("umount", part); err != nil {
+		// 尝试 lazy unmount
+		if err := util.Run("umount", "-l", part); err != nil {
+			util.Fatal(fmt.Sprintf("卸载分区 %s (挂载点: %s) 失败: %v", part, mountpoint, err))
+		}
+	}
+	fmt.Printf(i18n.T("install.unmounted"), part)
+}
+
 // createSubvolLayout 在目标分区上创建 Btrfs 子卷布局
 //
 // 返回根分区的 UUID。
@@ -170,7 +206,7 @@ func createSubvolLayout(rootPart string) string {
 	}
 
 	// Btrfs 子卷布局 (参考 openSUSE/Ubuntu 风格)
-	subvols := []string{"@", "@home", "@var", "@starsleep"}
+	subvols := []string{"@", "@home", "@var", "starsleep"}
 	for _, sv := range subvols {
 		subvolPath := filepath.Join(TargetMount, sv)
 		fmt.Println(i18n.T("install.create.subvol", sv))

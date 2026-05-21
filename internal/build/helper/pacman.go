@@ -53,7 +53,7 @@ func SyncWithPacman(root, dbPath string, installPkgs, expectedPkgs []string) {
 	args := append([]string{
 		"--root", root, "--dbpath", absDBPath,
 		"--config", "/etc/pacman.conf",
-		"-S", "--needed", "--noconfirm",
+		"-Sy", "--needed", "--noconfirm",
 	}, installPkgs...)
 	if err := util.Run("pacman", args...); err != nil {
 		util.Fatal(i18n.T("pacman.failed", err))

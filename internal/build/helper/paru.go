@@ -28,7 +28,7 @@ func SyncParu(root, dbPath string, pkgs, expectedPkgs []string) {
 	absDBPath := filepath.Join(root, dbPath)
 	paruArgs := append([]string{
 		"-u", "builder", "--",
-		"paru", "-S", "--needed", "--noconfirm",
+		"paru", "-Sy", "--needed", "--noconfirm",
 		"--clonedir", cloneDir,
 		"--root", root,
 		"--dbpath", absDBPath,

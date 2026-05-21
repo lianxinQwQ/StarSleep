@@ -32,7 +32,7 @@ UUID=%s  /boot  vfat  defaults,noatime,fmask=0133,dmask=0022  0  2
 UUID=%s  /           btrfs  subvol=@,compress=zstd,noatime,ssd  0  0
 UUID=%s  /home       btrfs  subvol=@home,compress=zstd,noatime  0  0
 UUID=%s  /var        btrfs  subvol=@var,compress=zstd,noatime   0  0
-UUID=%s  /starsleep  btrfs  subvol=@starsleep,compress=zstd     0  0
+UUID=%s  /starsleep  btrfs  subvol=starsleep,compress=zstd      0  0
 
 # ── 临时文件系统 ──
 tmpfs  /tmp  tmpfs  defaults,noatime,mode=1777  0  0

@@ -41,7 +41,7 @@ editor no
 
 // deploySnapshotToESP 从 build flatDir 复制内核和 initramfs 到目标 ESP
 func deploySnapshotToESP(espMount, snapshotName, rootUUID, entryName string) {
-	flatDir := filepath.Join("/starsleep", "work", "flat")
+	flatDir := filepath.Join(TargetStarsleepMount, "work", "flat")
 	bootSrc := filepath.Join(flatDir, "boot")
 
 	// 查找内核和 initramfs
